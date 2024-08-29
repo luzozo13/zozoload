@@ -1,0 +1,779 @@
+[
+    {
+        "id": "acdaf71c.2a8a08",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": ""
+    },
+    {
+        "id": "f53405a5.a25eb8",
+        "type": "mqtt-broker",
+        "z": "",
+        "name": "Mosquitto",
+        "broker": "192.168.1.26",
+        "port": "1883",
+        "clientid": "",
+        "usetls": false,
+        "compatmode": false,
+        "keepalive": "60",
+        "cleansession": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthPayload": "",
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": ""
+    },
+    {
+        "id": "cb7241bb.445e4",
+        "type": "ui_base",
+        "theme": {
+            "name": "theme-light",
+            "lightTheme": {
+                "default": "#0094CE",
+                "baseColor": "#0094CE",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif",
+                "edited": true,
+                "reset": false
+            },
+            "darkTheme": {
+                "default": "#097479",
+                "baseColor": "#097479",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif",
+                "edited": false
+            },
+            "customTheme": {
+                "name": "Untitled Theme 1",
+                "default": "#4B7930",
+                "baseColor": "#4B7930",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif"
+            },
+            "themeState": {
+                "base-color": {
+                    "default": "#0094CE",
+                    "value": "#0094CE",
+                    "edited": false
+                },
+                "page-titlebar-backgroundColor": {
+                    "value": "#0094CE",
+                    "edited": false
+                },
+                "page-backgroundColor": {
+                    "value": "#fafafa",
+                    "edited": false
+                },
+                "page-sidebar-backgroundColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "group-textColor": {
+                    "value": "#1bbfff",
+                    "edited": false
+                },
+                "group-borderColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "group-backgroundColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "widget-textColor": {
+                    "value": "#111111",
+                    "edited": false
+                },
+                "widget-backgroundColor": {
+                    "value": "#0094ce",
+                    "edited": false
+                },
+                "widget-borderColor": {
+                    "value": "#ffffff",
+                    "edited": false
+                },
+                "base-font": {
+                    "value": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif"
+                }
+            },
+            "angularTheme": {
+                "primary": "indigo",
+                "accents": "blue",
+                "warn": "red",
+                "background": "grey"
+            }
+        },
+        "site": {
+            "name": "Node-RED Dashboard",
+            "hideToolbar": "false",
+            "allowSwipe": "false",
+            "lockMenu": "false",
+            "allowTempTheme": "true",
+            "dateFormat": "DD/MM/YYYY",
+            "sizes": {
+                "sx": 48,
+                "sy": 48,
+                "gx": 6,
+                "gy": 6,
+                "cx": 6,
+                "cy": 6,
+                "px": 0,
+                "py": 0
+            }
+        }
+    },
+    {
+        "id": "83400064.30ec9",
+        "type": "ui_tab",
+        "z": "",
+        "name": "Debug",
+        "icon": "dashboard",
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "cef0578.63768a8",
+        "type": "ui_group",
+        "z": "",
+        "name": "Borne",
+        "tab": "83400064.30ec9",
+        "disp": true,
+        "width": "6",
+        "collapse": false
+    },
+    {
+        "id": "ecbe8a7d.cb8cf8",
+        "type": "mqtt in",
+        "z": "acdaf71c.2a8a08",
+        "name": "esp32/new_state",
+        "topic": "esp32/new_state",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "f53405a5.a25eb8",
+        "x": 140,
+        "y": 180,
+        "wires": [
+            [
+                "68675b66.5a3444"
+            ]
+        ]
+    },
+    {
+        "id": "ecca64ea.7af0a8",
+        "type": "mqtt in",
+        "z": "acdaf71c.2a8a08",
+        "name": "esp32/started",
+        "topic": "esp32/started",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "f53405a5.a25eb8",
+        "x": 110,
+        "y": 460,
+        "wires": [
+            [
+                "38e5fc02.0f27b4"
+            ]
+        ]
+    },
+    {
+        "id": "38e5fc02.0f27b4",
+        "type": "debug",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 290,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "1147eef1.428e71",
+        "type": "mqtt in",
+        "z": "acdaf71c.2a8a08",
+        "name": "esp32/cpp_max",
+        "topic": "esp32/cpp_max",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "f53405a5.a25eb8",
+        "x": 120,
+        "y": 540,
+        "wires": [
+            [
+                "66825b71.fc5f34",
+                "7082d312.cad9ac"
+            ]
+        ]
+    },
+    {
+        "id": "66825b71.fc5f34",
+        "type": "debug",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 290,
+        "y": 500,
+        "wires": []
+    },
+    {
+        "id": "4bdec078.eabd4",
+        "type": "mqtt in",
+        "z": "acdaf71c.2a8a08",
+        "name": "esp32/cpp_min",
+        "topic": "esp32/cpp_min",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "f53405a5.a25eb8",
+        "x": 120,
+        "y": 620,
+        "wires": [
+            [
+                "2bf9860e.1e1dea",
+                "f06d8b3f.a666b8"
+            ]
+        ]
+    },
+    {
+        "id": "2bf9860e.1e1dea",
+        "type": "debug",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 290,
+        "y": 580,
+        "wires": []
+    },
+    {
+        "id": "256d5635.86761a",
+        "type": "mqtt in",
+        "z": "acdaf71c.2a8a08",
+        "name": "esp32/prev_state",
+        "topic": "esp32/prev_state",
+        "qos": "2",
+        "datatype": "auto",
+        "broker": "f53405a5.a25eb8",
+        "x": 120,
+        "y": 377,
+        "wires": [
+            [
+                "8e26889b.614128",
+                "2790bf3b.7a8f2"
+            ]
+        ]
+    },
+    {
+        "id": "8e26889b.614128",
+        "type": "debug",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 290,
+        "y": 300,
+        "wires": []
+    },
+    {
+        "id": "7082d312.cad9ac",
+        "type": "function",
+        "z": "acdaf71c.2a8a08",
+        "name": "Cppmax_data",
+        "func": "var topic=msg.topic;\nvar d = new Date();\nvar t = d.getTime();\npayload={\"time\":t, \"payload\":msg.payload,\"topic\":topic}\nmsg.payload=payload;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 320,
+        "y": 537,
+        "wires": [
+            [
+                "6f34948d.66eabc"
+            ]
+        ]
+    },
+    {
+        "id": "6f34948d.66eabc",
+        "type": "json",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 500,
+        "y": 537,
+        "wires": [
+            [
+                "ff2b1d45.a5248"
+            ]
+        ]
+    },
+    {
+        "id": "ff2b1d45.a5248",
+        "type": "file",
+        "z": "acdaf71c.2a8a08",
+        "name": "Log sensor data",
+        "filename": "/home/pi/logs/sensors.txt",
+        "appendNewline": true,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 670,
+        "y": 537,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "f06d8b3f.a666b8",
+        "type": "function",
+        "z": "acdaf71c.2a8a08",
+        "name": "Cppmin_data",
+        "func": "var topic=msg.topic;\nvar d = new Date();\nvar t = d.getTime();\npayload={\"time\":t, \"payload\":msg.payload,\"topic\":topic}\nmsg.payload=payload;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 310,
+        "y": 617,
+        "wires": [
+            [
+                "e167db2c.00c298"
+            ]
+        ]
+    },
+    {
+        "id": "e167db2c.00c298",
+        "type": "json",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 500,
+        "y": 617,
+        "wires": [
+            [
+                "5ba63695.fd3638"
+            ]
+        ]
+    },
+    {
+        "id": "5ba63695.fd3638",
+        "type": "file",
+        "z": "acdaf71c.2a8a08",
+        "name": "Log sensor data",
+        "filename": "/home/pi/logs/sensors.txt",
+        "appendNewline": true,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 670,
+        "y": 617,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "2790bf3b.7a8f2",
+        "type": "function",
+        "z": "acdaf71c.2a8a08",
+        "name": "prev_state",
+        "func": "var topic=msg.topic;\nvar d = new Date();\nvar t = d.getTime();\npayload={\"time\":t, \"payload\":msg.payload,\"topic\":topic}\nmsg.payload=payload;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 290,
+        "y": 377,
+        "wires": [
+            [
+                "1ea02ec6.0e92c1"
+            ]
+        ]
+    },
+    {
+        "id": "1ea02ec6.0e92c1",
+        "type": "json",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 480,
+        "y": 377,
+        "wires": [
+            [
+                "2c40c62b.b455ca"
+            ]
+        ]
+    },
+    {
+        "id": "2c40c62b.b455ca",
+        "type": "file",
+        "z": "acdaf71c.2a8a08",
+        "name": "Log sensor data",
+        "filename": "/home/pi/logs/sensors.txt",
+        "appendNewline": true,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 650,
+        "y": 377,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "d1e76bd4.f77578",
+        "type": "function",
+        "z": "acdaf71c.2a8a08",
+        "name": "new_state",
+        "func": "var b_enabled = global.get(\"b_meas_enabled\");\nif (b_enabled)\n{\n    payload=msg.time + \",\" + msg.payload;\n    msg.payload=payload;\n    return msg;\n}",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 770,
+        "y": 180,
+        "wires": [
+            [
+                "fe69f53.0e39308",
+                "3a80b302.1a990c"
+            ]
+        ]
+    },
+    {
+        "id": "fe69f53.0e39308",
+        "type": "file",
+        "z": "acdaf71c.2a8a08",
+        "name": "Log sensor data",
+        "filename": "/home/pi/logs/sensors.txt",
+        "appendNewline": true,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 960,
+        "y": 180,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "64aff8d4.720068",
+        "type": "inject",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "x": 150,
+        "y": 140,
+        "wires": [
+            [
+                "d538307a.5d877"
+            ]
+        ]
+    },
+    {
+        "id": "3059fd3f.7b8612",
+        "type": "inject",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "x": 120,
+        "y": 40,
+        "wires": [
+            [
+                "43d12c3f.4a4da4"
+            ]
+        ]
+    },
+    {
+        "id": "25ef30a1.ec3e4",
+        "type": "csv",
+        "z": "acdaf71c.2a8a08",
+        "name": "graph",
+        "sep": ",",
+        "hdrin": "",
+        "hdrout": true,
+        "multi": "one",
+        "ret": "\\n",
+        "temp": "time,state_cur,state_meas,max,min",
+        "skip": "0",
+        "strings": true,
+        "x": 470,
+        "y": 797,
+        "wires": [
+            [
+                "635951b7.aa393"
+            ]
+        ]
+    },
+    {
+        "id": "635951b7.aa393",
+        "type": "file",
+        "z": "acdaf71c.2a8a08",
+        "name": "Log sensor data",
+        "filename": "/home/pi/logs/sensors.txt",
+        "appendNewline": true,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 680,
+        "y": 797,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "8bc92b05.f42098",
+        "type": "change",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "1,2,3,4",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 290,
+        "y": 757,
+        "wires": [
+            [
+                "25ef30a1.ec3e4",
+                "eae7f32f.90e69"
+            ]
+        ]
+    },
+    {
+        "id": "eae7f32f.90e69",
+        "type": "debug",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 490,
+        "y": 720,
+        "wires": []
+    },
+    {
+        "id": "6277b4ea.73022c",
+        "type": "file in",
+        "z": "acdaf71c.2a8a08",
+        "name": "sensors.txt",
+        "filename": "/home/pi/logs/sensors.txt",
+        "format": "utf8",
+        "chunk": false,
+        "sendError": false,
+        "encoding": "none",
+        "x": 610,
+        "y": 100,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "d538307a.5d877",
+        "type": "moment",
+        "z": "acdaf71c.2a8a08",
+        "name": "Formatted time",
+        "topic": "",
+        "input": "",
+        "inputType": "date",
+        "inTz": "Europe/Paris",
+        "adjAmount": 0,
+        "adjType": "days",
+        "adjDir": "add",
+        "format": "YYYY-MM-DD_hh-mm-ss.SSS",
+        "locale": "en-US",
+        "output": "time",
+        "outputType": "msg",
+        "outTz": "Europe/Paris",
+        "x": 340,
+        "y": 140,
+        "wires": [
+            [
+                "e481e9a6.84efe8"
+            ]
+        ]
+    },
+    {
+        "id": "43d12c3f.4a4da4",
+        "type": "exec",
+        "z": "acdaf71c.2a8a08",
+        "command": "/home/pi/logs/backup.sh",
+        "addpay": true,
+        "append": "",
+        "useSpawn": "false",
+        "timer": "",
+        "oldrc": false,
+        "name": "backup",
+        "x": 300,
+        "y": 40,
+        "wires": [
+            [],
+            [
+                "fe4472bd.77ac"
+            ],
+            []
+        ]
+    },
+    {
+        "id": "fe4472bd.77ac",
+        "type": "debug",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "x": 590,
+        "y": 20,
+        "wires": []
+    },
+    {
+        "id": "3a80b302.1a990c",
+        "type": "debug",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "x": 910,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "e481e9a6.84efe8",
+        "type": "function",
+        "z": "acdaf71c.2a8a08",
+        "name": "new_state",
+        "func": "payload=msg.time + \",1,2,20,4500\";\nmsg.payload=payload;\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 550,
+        "y": 140,
+        "wires": [
+            [
+                "bacecade.f78928"
+            ]
+        ]
+    },
+    {
+        "id": "bacecade.f78928",
+        "type": "file",
+        "z": "acdaf71c.2a8a08",
+        "name": "Log sensor data",
+        "filename": "/home/pi/logs/sensors.txt",
+        "appendNewline": true,
+        "createDir": true,
+        "overwriteFile": "false",
+        "encoding": "none",
+        "x": 740,
+        "y": 140,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "68675b66.5a3444",
+        "type": "moment",
+        "z": "acdaf71c.2a8a08",
+        "name": "Formatted time",
+        "topic": "",
+        "input": "",
+        "inputType": "date",
+        "inTz": "Europe/Paris",
+        "adjAmount": 0,
+        "adjType": "days",
+        "adjDir": "add",
+        "format": "YYYY-MM-DD_hh-mm-ss.SSS",
+        "locale": "en-US",
+        "output": "time",
+        "outputType": "msg",
+        "outTz": "Europe/Paris",
+        "x": 560,
+        "y": 180,
+        "wires": [
+            [
+                "d1e76bd4.f77578"
+            ]
+        ]
+    },
+    {
+        "id": "d5b4b5e.0943e48",
+        "type": "ui_switch",
+        "z": "acdaf71c.2a8a08",
+        "name": "",
+        "label": "switch",
+        "tooltip": "",
+        "group": "cef0578.63768a8",
+        "order": 0,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "decouple": "false",
+        "topic": "",
+        "style": "",
+        "onvalue": "true",
+        "onvalueType": "bool",
+        "onicon": "",
+        "oncolor": "",
+        "offvalue": "false",
+        "offvalueType": "bool",
+        "officon": "",
+        "offcolor": "",
+        "x": 110,
+        "y": 240,
+        "wires": [
+            [
+                "e5f696a1.d3bea8"
+            ]
+        ]
+    },
+    {
+        "id": "e5f696a1.d3bea8",
+        "type": "function",
+        "z": "acdaf71c.2a8a08",
+        "name": "EnableTransfer",
+        "func": "global.set(\"b_meas_enabled\", msg.payload);",
+        "outputs": 1,
+        "noerr": 0,
+        "x": 290,
+        "y": 240,
+        "wires": [
+            []
+        ]
+    }
+]
