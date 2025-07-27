@@ -45,6 +45,7 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   client.setServer(mqtt_server, mqtt_port);
+  client.setCallback(mqttCallback);
 
   ArduinoOTA.begin();
   Serial.println("OTA prêt");
@@ -71,6 +72,8 @@ void setup() {
 void reconnect() {
   while (!client.connected()) {
     if (client.connect("ZozoChargeClient")) {
+      // Subscribe to topics after successful connection
+      client.subscribe(MQTT_SET_PWM);
       // Connected
     } else {
       delay(1000);
@@ -313,4 +316,24 @@ void publishState() {
     state_char, CPP_max, CPP_min);
 
   client.publish(MQTT_STATE, msg);
+}
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  payload[length] = '\0'; // Null-terminate first
+  
+  if (strcmp(topic, MQTT_SET_PWM) == 0) {
+    int pwm = atoi((char*)payload); // Convert payload to int
+    if (pwm < 0) pwm = 0;
+    if (pwm > 255) pwm = 255;
+    i_charge_speed = pwm;
+    
+    // Publish the new PWM value to MQTT for confirmation
+    char pwm_msg[8];
+    snprintf(pwm_msg, sizeof(pwm_msg), "%d", i_charge_speed);
+    client.publish(MQTT_SPEED, pwm_msg);
+    
+    if (i_state_current == STATE_C) {
+      setStateC();
+    }
+  }
 }

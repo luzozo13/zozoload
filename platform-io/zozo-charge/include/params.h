@@ -73,7 +73,7 @@ void setStateA();
 void setStateB();
 void setStateC();
 void publishState();
-
+void mqttCallback(char* topic, byte* payload, unsigned int length);
 
 // DEBUG parameters to measure the time
 unsigned long loop_start_time = 0;
