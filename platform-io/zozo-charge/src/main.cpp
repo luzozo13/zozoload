@@ -80,29 +80,70 @@ void reconnect() {
 
 // Reads the pilot signal and determines the charging state
 int getState() {
-    CPP_max = 0;
-    CPP_min = 4095;
+  CPP_max = 0;
+  CPP_min = 4095;
 
-    int i_nb = 0;
-    for (int i = 0; i <= 25500; i++) {
-        CPP_value = analogRead(PILOT_READ);
-        if (CPP_max < CPP_value) { CPP_max = CPP_value; }
-        if (CPP_min > CPP_value) { CPP_min = CPP_value; }
-        if (CPP_value >= 2000) { i_nb++; }
-    }
-    i_nb_pos = i_nb;
+  int i_nb = 0;
+  unsigned long ul_start_time = millis();
+  while (millis() - ul_start_time < 25) { // Sample for 25ms
+    CPP_value = analogRead(PILOT_READ);
+    if (CPP_max < CPP_value) { CPP_max = CPP_value; }
+    if (CPP_min > CPP_value) { CPP_min = CPP_value; }
+    if (CPP_value >= 2000) { i_nb++; }
+  }
+  i_nb_pos = i_nb;
 
-    if (CPP_max >= TH_AB) {
-        i_state_meas = STATE_A;
-    } else if (CPP_max >= TH_BC) {
-        i_state_meas = STATE_B;
-    } else if (CPP_max >= TH_CD) {
-        i_state_meas = STATE_C;
+  if (CPP_max >= TH_AB) {
+    i_state_meas = STATE_A;
+  } else if (CPP_max >= TH_BC) {
+    i_state_meas = STATE_B;
+  } else if (CPP_max >= TH_CD) {
+    i_state_meas = STATE_C;
+  }
+  return i_state_meas;
+}
+
+void update_charge_speed() {
+    int i_new_speed = i_charge_speed;
+
+    // ######## DEBUG ##########
+    char msg[16];
+    // ######## END DEBUG ##########
+
+    if (digitalRead(B_R)) {
+      i_new_speed = CP_AMP_8;
+      // ######## DEBUG ##########
+      snprintf(msg, sizeof(msg), "B_8A");
+      // ######## END DEBUG ##########
+    } else if (digitalRead(B_G)) {
+      i_new_speed = CP_AMP_16;
+      // ######## DEBUG ##########
+      snprintf(msg, sizeof(msg), "B_16A");
+      // ######## END DEBUG ##########
+    } else if (digitalRead(B_B)) {
+      i_new_speed = CP_AMP_BOOST;
+      // ######## DEBUG ##########
+      snprintf(msg, sizeof(msg), "B_BOOST");
+      // ######## END DEBUG ##########
     }
-    return i_state_meas;
+    if (i_new_speed != i_charge_speed) {
+      // ######## DEBUG ##########
+      client.publish(MQTT_SPEED, msg);
+      // ######## END DEBUG ##########
+      i_charge_speed = i_new_speed;
+      if (i_state_current == STATE_C) {
+        setStateC(); // Update state if currently charging
+      }
+    }
 }
 
 void loop() {
+
+  // // ########## DEBUG ##########
+  // loop_start_time = millis();
+  // // ########## END DEBUG ##########
+
+
   ArduinoOTA.handle();
 
   if (!client.connected()) {
@@ -110,33 +151,166 @@ void loop() {
   }
   client.loop();
 
-  int current_state = getState();
-   // Convert state to character
+  // // ########## DEBUG ##########
+  // getstate_start_time = millis();
+  // // ########## END DEBUG ##########
+
+  getState();
+
+  // // ########## DEBUG ##########
+  // getstate_end_time = millis();
+  // getstate_duration = getstate_end_time - getstate_start_time;
+  // // ########## END DEBUG ##########
+
+  if (isStateDiff()) {
+    if (isFirstStateDiff()) {
+      startDiffTimer();
+    }
+    else {
+      if (isDiffSteady()) {
+        // Store previous state as a character
+        char prev_state = 'U';
+        if (i_state_current == STATE_A) prev_state = 'A';
+        else if (i_state_current == STATE_B) prev_state = 'B';
+        else if (i_state_current == STATE_C) prev_state = 'C';
+        else prev_state = 'U';
+
+        setState();
+
+        // Store new state as a character
+        char new_state = 'U';
+        if (i_state_current == STATE_A) new_state = 'A';
+        else if (i_state_current == STATE_B) new_state = 'B';
+        else if (i_state_current == STATE_C) new_state = 'C';
+        else new_state = 'U';
+
+        // Publish the transition (e.g. "B->C")
+        char transition_msg[8];
+        snprintf(transition_msg, sizeof(transition_msg), "%c->%c", prev_state, new_state);
+        client.publish(MQTT_CHANGE, transition_msg);
+      }
+    }
+  }
+  update_charge_speed();
+
+  // ########### DEBUG ##########
+  // Publish state to MQTT only every state_publish_interval ms
+  if (millis() - last_state_publish > state_publish_interval) {
+  // ########### END DEBUG ##########
+
+    publishState();
+  
+  // ############ DEBUG ##########  
+    last_state_publish = millis();
+  }
+  // ############ END DEBUG ##########
+
+  // // ########## DEBUG ##########
+  // loop_end_time = millis();
+  // loop_duration = loop_end_time - loop_start_time;
+
+  // // Publish timings to MQTT
+  // char timing_msg[64];
+  // snprintf(timing_msg, sizeof(timing_msg), "loop:%lums getState:%lums", loop_duration, getstate_duration);
+  // client.publish("zozo-charge/timing", timing_msg);
+  // // ########## END DEBUG ##########
+}
+
+// Vérifie si l'état mesuré est différent de l'état courant
+bool isStateDiff() {
+  return i_state_meas != i_state_current;
+}
+
+// Vérifie si c'est le premier changement d'état
+bool isFirstStateDiff() {
+  return i_state_meas != i_state_previous;
+}
+
+// Démarre le "timer" de stabilité de l'état
+void startDiffTimer() {
+  i_state_previous = i_state_meas;
+  i_debounce_cnt = 0;
+}
+
+// Vérifie si l'état mesuré est stable
+bool isDiffSteady() {
+  if (i_state_meas == i_state_previous) {
+    i_debounce_cnt++;
+    if (i_debounce_cnt >= STATE_CHANGE_DEBOUNCE) {
+      i_debounce_cnt = 0;
+      return true;
+    }
+  } else {
+    i_debounce_cnt = 0;
+  }
+  return false;
+}
+
+void setStateFault(){
+  i_state_current = STATE_FAULT;
+  digitalWrite(REL_CTRL, LOW);
+  digitalWrite(FLT_CTRL, HIGH);
+}
+
+void setStateA(){
+  i_state_current = STATE_A;
+  ledcWrite(CH_CP_CTRL, CP_12P);
+  digitalWrite(REL_CTRL, LOW);
+}
+
+void setStateB(){
+  i_state_current = STATE_B;
+  ledcWrite(CH_CP_CTRL, i_charge_speed);
+  digitalWrite(REL_CTRL, LOW);
+}
+
+void setStateC(){
+  i_state_current = STATE_C;
+  ledcWrite(CH_CP_CTRL, i_charge_speed);
+  digitalWrite(REL_CTRL, HIGH);
+}
+
+void setState() {
+  switch (i_state_meas) {
+    case STATE_A:
+      setStateA();
+      break;
+    case STATE_B:
+      // Only allow A->B, never C->B
+      if (i_state_current == STATE_A) {
+        setStateB();
+      } else {
+        setStateA();
+      }
+      break;
+    case STATE_C:
+      // Only allow B->C
+      if (i_state_current == STATE_B) {
+        setStateC();
+      } else {
+        setStateA();
+      }
+      break;
+    case STATE_FAULT:
+    default:
+      setStateFault();
+      break;
+  }
+}
+
+void publishState() {
+  // Convert state to character
   const char* state_char = "";
-  if (current_state == STATE_A) state_char = "A";
-  else if (current_state == STATE_B) state_char = "B";
-  else if (current_state == STATE_C) state_char = "C";
+  if (i_state_current == STATE_A) state_char = "A";
+  else if (i_state_current == STATE_B) state_char = "B";
+  else if (i_state_current == STATE_C) state_char = "C";
   else state_char = "Unknown";
 
-  client.publish(mqtt_topic, state_char);
+  // Compose JSON message
+  char msg[64];
+  snprintf(msg, sizeof(msg),
+    "{\"state\":\"%s\",\"CPP_max\":%d,\"CPP_min\":%d}",
+    state_char, CPP_max, CPP_min);
 
-
-  // J1772 logic
-  if (current_state == STATE_A) {
-    // No car: steady 12V
-    ledcWrite(CH_CP_CTRL, CP_12P);
-    digitalWrite(REL_CTRL, LOW);
-    digitalWrite(L_G, LOW);
-  } else if (current_state == STATE_B) {
-    // Car detected: start PWM, relay still open
-    ledcWrite(CH_CP_CTRL, CP_AMP_16);
-    digitalWrite(REL_CTRL, LOW);
-    digitalWrite(L_G, LOW);
-  } else if (current_state == STATE_C) {
-    // Car requests charging: PWM and close relay
-    ledcWrite(CH_CP_CTRL, CP_AMP_16);
-    digitalWrite(REL_CTRL, HIGH);
-    digitalWrite(L_G, HIGH);
-  }
-
+  client.publish(MQTT_STATE, msg);
 }

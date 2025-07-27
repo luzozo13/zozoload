@@ -5,5 +5,3 @@
 .vscode/ipch
 include/wifi_credentials.h
 include/mqtt_config.h
-README*
-**/README*

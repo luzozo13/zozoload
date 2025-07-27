@@ -48,8 +48,41 @@
 #define CP_12P 0
 #define CP_12N 255
 
+#define STATE_CHANGE_DEBOUNCE 10
+
 int CPP_value;
 int CPP_max;
 int CPP_min;
 int i_nb_pos;
-int i_state_meas;
+int i_charge_speed = CP_AMP_16; // Default charge speed
+
+// Variables d'état
+int i_state_current = STATE_INIT;
+int i_state_previous = STATE_INIT;
+int i_state_meas = STATE_INIT;
+int i_debounce_cnt = 0;
+
+// Prototypes pour la gestion d'état
+bool isStateDiff();
+bool isFirstStateDiff();
+void startDiffTimer();
+bool isDiffSteady();
+void setState();
+void setStateFault();
+void setStateA();
+void setStateB();
+void setStateC();
+void publishState();
+
+
+// DEBUG parameters to measure the time
+unsigned long loop_start_time = 0;
+unsigned long loop_end_time = 0;
+unsigned long getstate_start_time = 0;
+unsigned long getstate_end_time = 0;
+unsigned long loop_duration = 0;
+unsigned long getstate_duration = 0;
+
+// DEBUG parameters to publish state
+unsigned long last_state_publish = 0;
+const unsigned long state_publish_interval = 1000; // 1 second
