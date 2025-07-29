@@ -55,9 +55,9 @@ void setup() {
 
   digitalWrite(REL_CTRL, LOW);
   digitalWrite(FLT_CTRL, LOW);
-  digitalWrite(L_R, LOW);
-  digitalWrite(L_G, LOW);
-  digitalWrite(L_B, LOW);
+  digitalWrite(L_R, HIGH);
+  digitalWrite(L_G, HIGH);
+  digitalWrite(L_B, HIGH);
   
   digitalWrite(MT_CTRL_CLOSE, LOW);
     // Open lock (pulse MT_CTRL_OPEN for 1 second)
