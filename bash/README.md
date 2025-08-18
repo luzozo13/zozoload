@@ -6,9 +6,9 @@ Tailscale installation script for Podman container to provide secure VPN access 
 
 ## 🚀 Installation
 
-1. **Copy the configuration file:**
+1. **Copy the configuration template:**
    ```bash
-   cp tailscale_config.env.example tailscale_config.env
+   cp tailscale_config.env.template tailscale_config.env
    ```
 
 2. **Edit the configuration:**
