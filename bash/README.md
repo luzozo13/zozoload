@@ -6,6 +6,32 @@ Tailscale installation script for Podman container to provide secure VPN access 
 
 ## 🚀 Installation
 
+### Method 1: Clone Repository (Recommended)
+```bash
+git clone https://github.com/luzozo13/zozoload.git
+cd zozoload/bash
+cp tailscale_config.env.template tailscale_config.env
+nano tailscale_config.env  # Edit with your settings
+chmod +x podman_tailscale.sh
+sudo ./podman_tailscale.sh
+```
+
+### Method 2: Direct Download
+```bash
+wget https://raw.githubusercontent.com/luzozo13/zozoload/main/bash/podman_tailscale.sh
+wget https://raw.githubusercontent.com/luzozo13/zozoload/main/bash/tailscale_config.env.template
+cp tailscale_config.env.template tailscale_config.env
+nano tailscale_config.env  # Edit with your settings
+chmod +x podman_tailscale.sh
+sudo ./podman_tailscale.sh
+```
+
+### Method 3: One-liner Install
+```bash
+curl -sSL https://raw.githubusercontent.com/luzozo13/zozoload/main/bash/install-tailscale.sh | bash
+```
+
+### Configuration Steps:
 1. **Copy the configuration template:**
    ```bash
    cp tailscale_config.env.template tailscale_config.env

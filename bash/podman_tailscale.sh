@@ -4,6 +4,12 @@
 # 📦 Purpose: Secure VPN access to Home Assistant without exposing ports
 # 🧠 Author: Copilot for Ludovic
 
+# 📁 Configuration file path
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_FILE="$SCRIPT_DIR/tailscale_config.env"🚀 Tailscale installation script for Podman container
+# 📦 Purpose: Secure VPN access to Home Assistant without exposing ports
+# 🧠 Author: Copilot for Ludovic
+
 # 📁 Configuration file path 📁 Configuration file pathbash
 
 # 🚀 Tailscale installation script for Podman container
