@@ -23,10 +23,10 @@ Tailscale installation script for Podman container to provide secure VPN access 
    - `AUTHKEY`: Tailscale authentication key (generate at https://login.tailscale.com/admin/settings/authkeys)
    - `CONFIG_DIR`: Persistent configuration directory (default: `/etc/tailscale`)
 
-4. **Execute the script:**
+4. **Execute the script with sudo (required for network operations):**
    ```bash
    chmod +x podman_tailscale.sh
-   ./podman_tailscale.sh
+   sudo ./podman_tailscale.sh
    ```
 
 ## ⚙️ Required Configuration
@@ -51,9 +51,22 @@ Tailscale installation script for Podman container to provide secure VPN access 
 The script:
 1. Checks for the presence of the configuration file
 2. Validates that all variables are defined
-3. Creates the Tailscale container with subnet routing
-4. Configures systemd service for automatic startup
-5. Enables and starts the service
+3. Verifies sudo access (required for network operations)
+4. Creates the Tailscale container with subnet routing
+5. Configures systemd service for automatic startup
+6. Enables and starts the service
+
+### ⚠️ Sudo Requirement
+
+Tailscale requires privileged access for:
+- TUN/TAP device access (`/dev/net/tun`)
+- Network namespace operations
+- Subnet routing capabilities
+
+**Alternatives to sudo:**
+- **Rootless Podman**: Configure user namespaces (complex setup)
+- **User groups**: Add user to `podman` group (if configured)
+- **Docker**: Consider using Docker instead of Podman
 
 ## 🛡️ Security
 
@@ -65,10 +78,38 @@ The script:
 
 Check container logs:
 ```bash
-podman logs tailscale
+sudo podman logs tailscale
 ```
 
 Check service status:
 ```bash
 systemctl status container-tailscale
+```
+
+## 🔧 Troubleshooting
+
+### Permission Issues
+```bash
+# Check if container is running
+sudo podman ps
+
+# Restart container if needed
+sudo podman restart tailscale
+
+# Check Tailscale status inside container
+sudo podman exec tailscale tailscale status
+```
+
+### Rootless Podman Setup (Alternative)
+If you want to avoid sudo, configure rootless Podman:
+```bash
+# Enable user namespaces
+echo 'user.max_user_namespaces=28633' | sudo tee -a /etc/sysctl.conf
+sudo sysctl -p
+
+# Configure subuid/subgid
+sudo usermod --add-subuids 100000-165535 $(whoami)
+sudo usermod --add-subgids 100000-165535 $(whoami)
+
+# Reboot required for changes to take effect
 ```
