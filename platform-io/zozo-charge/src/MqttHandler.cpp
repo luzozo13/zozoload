@@ -103,7 +103,7 @@ void MqttHandler::publishSpeed(int speed_value) {
 
 //-- Message Handling --//
 
-void MqttHandler::handleMessage(char* topic, byte* payload, unsigned int length) {
+void MqttHandler::handleMessage(char* topic, uint8_t* payload, unsigned int length) {
     payload[length] = '\0'; // Null-terminate first
     
     if (strcmp(topic, MQTT_SET_PWM) == 0) {

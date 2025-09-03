@@ -118,14 +118,17 @@ void EVSEController::setState() {
     case STATE_A:
       chargingOff();
       ledcWrite(CH_CP_CTRL, CP_12P);
+      i_state_current = STATE_A;
       break;
     case STATE_B:
       chargingOff();
       ledcWrite(CH_CP_CTRL, i_charge_speed);
+      i_state_current = STATE_B; 
       break;
     case STATE_C:
       ledcWrite(CH_CP_CTRL, i_charge_speed);
       chargingOn();
+      i_state_current = STATE_C;
       break;
     case STATE_FAULT:
     default:
@@ -146,7 +149,6 @@ bool EVSEController::isFirstStateDiff() {
 
 void EVSEController::startDiffTimer() {
   i_state_previous = i_state_meas;
-  // OpenEVSE pattern: reset timer when state changes
   if (i_state_meas != i_tmp_state) {
     ul_tmp_state_start = millis();
     i_tmp_state = i_state_meas;
@@ -172,8 +174,7 @@ bool EVSEController::isDiffSteady() {
   return false; // Not stable yet
 }
 
-//-- Main Update Method (OpenEVSE Pattern) --//
-
+//-- Main Update Method --//
 void EVSEController::update() {
   // // ########## DEBUG ##########
   // ul_readpilot_start_time = millis();

@@ -32,7 +32,7 @@ const char* sz_mqtt_topic = MQTT_TOPIC;
 //-- Global MQTT Callback Bridge --//
 // Required because PubSubClient needs a C-style function pointer
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  g_mqttHandler.handleMessage(topic, payload, length);
+  g_mqttHandler.handleMessage(topic, (uint8_t*)payload, length);
 }
 
 //-- WiFi Connection Management --//
@@ -75,7 +75,7 @@ void setup() {
   // OTA setup
   ArduinoOTA.setHostname("zozo-charge");
   ArduinoOTA.begin();
-  
+ 
   Serial.println("EVSE Controller Ready");
 }
 

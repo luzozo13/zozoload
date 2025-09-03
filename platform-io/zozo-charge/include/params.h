@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Arduino.h>  // For byte type definition
+
 // Forward declaration
 class MqttHandler;
 
@@ -114,7 +116,7 @@ public:
   void setCppValue(int value) { i_cpp_value = value; }
   void setCppMax(int max_val) { i_cpp_max = max_val; }
   void setCppMin(int min_val) { i_cpp_min = min_val; }
-  void setChargeSpeed(int speed) { i_charge_speed = speed; }
+  void setChargeSpeed(int speed);
 
   // State getters
   int getCurrentState() const { return i_state_current; }
@@ -162,5 +164,4 @@ extern EVSEController g_EvseController;
 
 //-- Function Prototypes --//
 // Communication Functions
-void mqttCallback(char* sz_topic, byte* b_payload, unsigned int ui_length);
 void reconnect();                     // MQTT reconnection handler

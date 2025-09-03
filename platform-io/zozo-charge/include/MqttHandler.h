@@ -6,6 +6,9 @@
 
 #include <PubSubClient.h>
 
+// Forward declaration to avoid circular dependency
+class EVSEController;
+
 class MqttHandler {
 private:
     PubSubClient* m_pubsubClient;  // Pointer to MQTT client
@@ -36,5 +39,5 @@ public:
     void publishSpeed(int speed_value);
     
     // Internal callback handler (to be called by global callback)
-    void handleMessage(char* topic, byte* payload, unsigned int length);
+    void handleMessage(char* topic, uint8_t* payload, unsigned int length);
 };
