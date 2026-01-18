@@ -2,7 +2,8 @@
 // Minimalist MQTT communication handler
 
 #include "MqttHandler.h"
-#include "params.h" // For EVSEController class
+#include "EVSEController.h"
+#include "params.h" // For constants
 #include "mqtt_config.h"
 #include <stdio.h>
 
@@ -99,6 +100,76 @@ void MqttHandler::publishSpeed(int speed_value) {
     char sz_speed_msg[8];
     snprintf(sz_speed_msg, sizeof(sz_speed_msg), "%d", speed_value);
     publish(MQTT_SPEED, sz_speed_msg);
+}
+
+//-- Current Measurement Publishing --//
+
+void MqttHandler::publishCurrent(float current) {
+    if (!isConnected()) return;
+    
+    char sz_current_msg[16];
+    snprintf(sz_current_msg, sizeof(sz_current_msg), "%.2f", current);
+    publish(MQTT_CURRENT, sz_current_msg);
+}
+
+void MqttHandler::publishVoltage(float voltage) {
+    if (!isConnected()) return;
+    
+    char sz_voltage_msg[16];
+    snprintf(sz_voltage_msg, sizeof(sz_voltage_msg), "%.1f", voltage);
+    publish(MQTT_VOLTAGE, sz_voltage_msg);
+}
+
+void MqttHandler::publishPower(float power) {
+    if (!isConnected()) return;
+    
+    char sz_power_msg[16];
+    snprintf(sz_power_msg, sizeof(sz_power_msg), "%.1f", power);
+    publish(MQTT_POWER, sz_power_msg);
+}
+
+void MqttHandler::publishEnergy(float energy) {
+    if (!isConnected()) return;
+    
+    char sz_energy_msg[16];
+    snprintf(sz_energy_msg, sizeof(sz_energy_msg), "%.3f", energy);
+    publish(MQTT_ENERGY, sz_energy_msg);
+}
+
+void MqttHandler::publishFrequency(float frequency) {
+    if (!isConnected()) return;
+    
+    char sz_frequency_msg[16];
+    snprintf(sz_frequency_msg, sizeof(sz_frequency_msg), "%.1f", frequency);
+    publish(MQTT_FREQUENCY, sz_frequency_msg);
+}
+
+void MqttHandler::publishPowerFactor(float pf) {
+    if (!isConnected()) return;
+    
+    char sz_pf_msg[16];
+    snprintf(sz_pf_msg, sizeof(sz_pf_msg), "%.2f", pf);
+    publish(MQTT_POWER_FACTOR, sz_pf_msg);
+}
+
+void MqttHandler::publishDebug(const char* message) {
+    if (!isConnected()) return;
+    publish(MQTT_DEBUG, message);
+}
+
+void MqttHandler::publishDebugInit(const char* message) {
+    if (!isConnected()) return;
+    publish(MQTT_DEBUG_INIT, message);
+}
+
+void MqttHandler::publishDebugRead(const char* message) {
+    if (!isConnected()) return;
+    publish(MQTT_DEBUG_READ, message);
+}
+
+void MqttHandler::publishDebugComm(const char* message) {
+    if (!isConnected()) return;
+    publish(MQTT_DEBUG_COMM, message);
 }
 
 //-- Message Handling --//

@@ -38,6 +38,19 @@ public:
     void publishSpeed(const char* speed_msg);
     void publishSpeed(int speed_value);
     
+    // Current measurement publishing
+    void publishCurrent(float current);
+    void publishVoltage(float voltage);
+    void publishPower(float power);
+    void publishEnergy(float energy);
+    void publishFrequency(float frequency);
+    void publishPowerFactor(float pf);
+    
+    void publishDebug(const char* message);
+    void publishDebugInit(const char* message);
+    void publishDebugRead(const char* message);
+    void publishDebugComm(const char* message);
+    
     // Internal callback handler (to be called by global callback)
     void handleMessage(char* topic, uint8_t* payload, unsigned int length);
 };

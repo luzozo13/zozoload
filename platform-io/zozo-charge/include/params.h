@@ -2,8 +2,9 @@
 
 #include <Arduino.h>  // For byte type definition
 
-// Forward declaration
+// Forward declarations
 class MqttHandler;
+class PZEM004Tv30; // PZEM type forward declaration
 
 //-- Pin Assignments --//
 // EV Charger Control Pins
@@ -27,6 +28,13 @@ class MqttHandler;
 #define B_R 35              // Red button input
 #define B_G 36              // Green button input  
 #define B_B 39              // Blue button input
+
+//-- PZEM Current Measurement --//
+#define PZEM_RX_PIN 3      // PZEM RX pin (connect to PZEM TX)
+#define PZEM_TX_PIN 1      // PZEM TX pin (connect to PZEM RX)
+#define PZEM_ADDR 0x01      // PZEM device address
+#define PZEM_UPDATE_INTERVAL 5000  // Update every 5 seconds
+#define PZEM_TEST_MODE 0    // Set to 1 for simulated readings, 0 for real hardware
 
 //-- PWM Configuration --//
 #define CH_CP_CTRL 0        // PWM channel for Control Pilot
@@ -66,101 +74,13 @@ class MqttHandler;
 #define STATE_CHANGE_DEBOUNCE 10
 #define I_DELAY_PILOT_LOOP 12
 
-//-- Global State Variables --//
-// EVSE Controller Class (OpenEVSE pattern)
-class EVSEController {
-private:
-  // MQTT Handler for communication
-  MqttHandler* m_mqttHandler;         // Injected dependency
-
-  // Control Pilot measurements
-  int i_cpp_value;
-  int i_cpp_max;
-  int i_cpp_min;
-  int i_charge_speed = CP_AMP_16;     // Default charge speed
-
-  // EVSE State Machine Variables  
-  int i_state_current = STATE_INIT;
-  int i_state_previous = STATE_INIT;
-  int i_state_meas = STATE_INIT;
-  int i_debounce_cnt = 0;             // Legacy counter
-
-  // Timer-based State Transition (OpenEVSE pattern)
-  unsigned long ul_tmp_state_start = 0;
-  int i_tmp_state = STATE_INIT;
-
-  // Debug and Performance Monitoring
-  unsigned long ul_loop_start_time = 0;
-  unsigned long ul_loop_end_time = 0;
-  unsigned long ul_readpilot_start_time = 0;
-  unsigned long ul_readpilot_end_time = 0;
-  unsigned long ul_loop_duration = 0;
-  unsigned long ul_readpilot_duration = 0;
-  unsigned long ul_last_state_publish = 0;
-
-public:
-  // Constructors
-  EVSEController();                          // Default constructor (no MQTT)
-  EVSEController(MqttHandler& mqttHandler);  // Constructor with MQTT dependency injection
-  
-  // Set MQTT handler after construction
-  void setMqttHandler(MqttHandler& mqttHandler);
-
-  // Getters for Control Pilot measurements
-  int getCppValue() const { return i_cpp_value; }
-  int getCppMax() const { return i_cpp_max; }
-  int getCppMin() const { return i_cpp_min; }
-  int getChargeSpeed() const { return i_charge_speed; }
-
-  // Setters for Control Pilot measurements
-  void setCppValue(int value) { i_cpp_value = value; }
-  void setCppMax(int max_val) { i_cpp_max = max_val; }
-  void setCppMin(int min_val) { i_cpp_min = min_val; }
-  void setChargeSpeed(int speed);
-
-  // State getters
-  int getCurrentState() const { return i_state_current; }
-  int getPreviousState() const { return i_state_previous; }
-  int getMeasuredState() const { return i_state_meas; }
-  int getTmpState() const { return i_tmp_state; }
-  unsigned long getTmpStateStart() const { return ul_tmp_state_start; }
-
-  // State setters
-  void setCurrentState(int state) { i_state_current = state; }
-  void setPreviousState(int state) { i_state_previous = state; }
-  void setMeasuredState(int state) { i_state_meas = state; }
-  void setTmpState(int state) { i_tmp_state = state; }
-  void setTmpStateStart(unsigned long time) { ul_tmp_state_start = time; }
-
-  // Debug timing getters/setters
-  unsigned long getLastStatePublish() const { return ul_last_state_publish; }
-  void setLastStatePublish(unsigned long time) { ul_last_state_publish = time; }
-
-  // Main Control Functions (OpenEVSE pattern)
-  void update();                      // Main update loop
-  int readPilot();                    // Read and process pilot signal
-  
-  // State Detection Functions
-  bool isStateDiff();                 // Check if state has changed
-  bool isFirstStateDiff();            // Check if this is first state change
-  void startDiffTimer();              // Start state change timer
-  bool isDiffSteady();                // Check if state change is stable
-
-  // State Management Functions
-  void setState();                    // Main state controller
-  void setStateFault();               // Set fault state
-
-  // Relay Control Functions (OpenEVSE pattern)
-  void chargingOn();                  // Close relay - start charging
-  void chargingOff();                 // Open relay - stop charging
-
-  // Control Functions
-  void updateChargeSpeed();           // Update charging current
-  void publishState();                // Publish state via MQTT
-};
+// Forward declare EVSEController (definition in include/EVSEController.h)
+class EVSEController;
 
 // Global EVSE Controller instance
 extern EVSEController g_EvseController;
+// Global PZEM instance (defined in main.cpp)
+extern PZEM004Tv30 pzem;
 
 //-- Function Prototypes --//
 // Communication Functions

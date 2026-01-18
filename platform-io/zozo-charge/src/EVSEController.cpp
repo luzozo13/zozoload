@@ -2,10 +2,12 @@
 // ESP32 EVSE Controller - Class Implementation
 // Following OpenEVSE architectural patterns
 
-#include "params.h"
+#include "EVSEController.h"
 #include "MqttHandler.h"
 #include "mqtt_config.h"
 #include <Arduino.h>
+#include <HardwareSerial.h>
+#include <PZEM004Tv30.h>
 
 //-- EVSEController Class Implementation --//
 
@@ -184,6 +186,7 @@ void EVSEController::update() {
 
   readPilot();
 
+
   // // ########## DEBUG ##########
   // ul_readpilot_end_time = millis();
   // ul_readpilot_duration = ul_readpilot_end_time - ul_readpilot_start_time;
@@ -225,7 +228,8 @@ void EVSEController::update() {
   // ########### END DEBUG ##########
 
     publishState();
-  
+    // PZEM telemetry is read/published at application level (main.cpp)
+
   // ############ DEBUG ##########  
     ul_last_state_publish = millis();
   }
@@ -246,4 +250,37 @@ void EVSEController::publishState() {
 
   // Use MqttHandler utility method
   m_mqttHandler->publishState(sz_state_char, i_cpp_max, i_cpp_min);
+}
+
+//-- Hardware setup (moved from main.cpp) --//
+void EVSEController::setupHardware() {
+  // Initialize pins
+  pinMode(PILOT_READ, INPUT);
+  pinMode(REL_CTRL, OUTPUT);
+  pinMode(FLT_CTRL, OUTPUT);
+  pinMode(B_R, INPUT_PULLUP);
+  pinMode(B_G, INPUT_PULLUP);
+  pinMode(B_B, INPUT_PULLUP);
+
+  // Initialize PWM for Control Pilot
+  ledcSetup(CH_CP_CTRL, F_PWM, PWM_RES);
+  ledcAttachPin(CP_CTRL, CH_CP_CTRL);
+
+  // Initialize in safe state
+  digitalWrite(REL_CTRL, LOW);
+  digitalWrite(FLT_CTRL, LOW);
+  ledcWrite(CH_CP_CTRL, CP_12P);
+}
+
+//-- Current Measurement (PZEM) --//
+
+
+
+
+
+void EVSEController::setMeasurements(float current, float voltage, float power, float energy) {
+  f_current = current;
+  f_voltage = voltage;
+  f_power = power;
+  f_energy = energy;
 }
