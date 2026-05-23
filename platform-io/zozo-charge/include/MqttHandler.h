@@ -33,7 +33,7 @@ public:
     bool isConnected() const;
     
     // Utility methods for common message types
-    void publishState(const char* state, int cpp_max, int cpp_min);
+    void publishState(const char* state, int cpp_max, int cpp_min, bool charging_enabled);
     void publishTransition(char prev_state, char new_state);
     void publishSpeed(const char* speed_msg);
     void publishSpeed(int speed_value);

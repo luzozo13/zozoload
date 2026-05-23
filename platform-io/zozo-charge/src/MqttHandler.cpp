@@ -32,6 +32,7 @@ bool MqttHandler::reconnect(const char* clientId) {
     if (m_pubsubClient->connect(clientId)) {
         // Subscribe to control topics
         subscribe(MQTT_SET_PWM);
+        subscribe(MQTT_CMD);
         return true;
     }
     return false;
@@ -69,14 +70,14 @@ bool MqttHandler::isConnected() const {
 
 //-- Utility Methods for EVSE-specific Messages --//
 
-void MqttHandler::publishState(const char* state, int cpp_max, int cpp_min) {
+void MqttHandler::publishState(const char* state, int cpp_max, int cpp_min, bool charging_enabled) {
     if (!isConnected()) return;
     
     // Compose JSON message
-    char sz_msg[64];
+    char sz_msg[80];
     snprintf(sz_msg, sizeof(sz_msg),
-        "{\"state\":\"%s\",\"CPP_max\":%d,\"CPP_min\":%d}",
-        state, cpp_max, cpp_min);
+        "{\"state\":\"%s\",\"CPP_max\":%d,\"CPP_min\":%d,\"charging\":%s}",
+        state, cpp_max, cpp_min, charging_enabled ? "true" : "false");
     
     publish(MQTT_STATE, sz_msg);
 }
@@ -189,5 +190,15 @@ void MqttHandler::handleMessage(char* topic, uint8_t* payload, unsigned int leng
         
         // Publish confirmation
         publishSpeed(i_pwm);
+    }
+
+    if (strcmp(topic, MQTT_CMD) == 0) {
+        if (strcmp((char*)payload, "start") == 0) {
+            if (m_evseController) m_evseController->setChargingEnabled(true);
+            publish(MQTT_CMD "/status", "started");
+        } else if (strcmp((char*)payload, "stop") == 0) {
+            if (m_evseController) m_evseController->setChargingEnabled(false);
+            publish(MQTT_CMD "/status", "stopped");
+        }
     }
 }

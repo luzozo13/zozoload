@@ -93,6 +93,8 @@ void setup() {
     delay(500);
   }
 
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+
   g_mqttHandler.setup(sz_mqtt_server, i_mqtt_port);
   g_mqttHandler.setEVSEController(g_EvseController);
   pubsubClient.setCallback(mqttCallback);
@@ -114,6 +116,21 @@ void reconnect() {
   }
 }
 
+void publishTime() {
+  static unsigned long lastPublish = 0;
+  if (millis() - lastPublish < 60000) return;
+  lastPublish = millis();
+
+  time_t now = time(nullptr);
+  if (now < 24 * 3600) return; // not synced yet
+
+  struct tm t;
+  gmtime_r(&now, &t);
+  char buf[24];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &t);
+  g_mqttHandler.publish(MQTT_DEBUG_TIME, buf);
+}
+
 void loop() {
   ArduinoOTA.handle();
 
@@ -124,6 +141,7 @@ void loop() {
   debugPZEM();
   g_EvseController.update();
   readAndPublishPZEM();
+  publishTime();
 }
 
 void readAndPublishPZEM() {

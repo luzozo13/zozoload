@@ -17,3 +17,4 @@
 #define MQTT_DEBUG_INIT MQTT_TOPIC "/debug/init"
 #define MQTT_DEBUG_READ MQTT_TOPIC "/debug/read"
 #define MQTT_DEBUG_COMM MQTT_TOPIC "/debug/comm"
+#define MQTT_DEBUG_TIME MQTT_TOPIC "/debug/time"

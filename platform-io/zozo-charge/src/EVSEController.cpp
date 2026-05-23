@@ -60,6 +60,37 @@ void EVSEController::setChargeSpeed(int speed) {
   }
 }
 
+void EVSEController::setChargingEnabled(bool enabled) {
+  if (enabled == b_charging_enabled) return;
+  b_charging_enabled = enabled;
+
+  if (!enabled) {
+    if (i_state_current == STATE_C) {
+      enterSleep();
+    } else if (i_state_current == STATE_B) {
+      ledcWrite(CH_CP_CTRL, CP_12P);
+    }
+    return;
+  }
+
+  if (i_state_current == STATE_SLEEPING) {
+    ledcWrite(CH_CP_CTRL, i_charge_speed);
+    i_state_current = STATE_B;
+  } else if (i_state_current == STATE_B) {
+    ledcWrite(CH_CP_CTRL, i_charge_speed);
+  } else if (i_state_current == STATE_C) {
+    ledcWrite(CH_CP_CTRL, i_charge_speed);
+    chargingOn();
+  }
+}
+
+void EVSEController::enterSleep() {
+  // J1772 stop sequence: signal "not ready" to EV before cutting power
+  ledcWrite(CH_CP_CTRL, CP_12P);
+  ul_sleep_start_ms = millis();
+  i_state_current = STATE_SLEEPING;
+}
+
 void EVSEController::updateChargeSpeed() {
     int i_new_speed = i_charge_speed;
 
@@ -124,12 +155,17 @@ void EVSEController::setState() {
       break;
     case STATE_B:
       chargingOff();
-      ledcWrite(CH_CP_CTRL, i_charge_speed);
-      i_state_current = STATE_B; 
+      ledcWrite(CH_CP_CTRL, b_charging_enabled ? i_charge_speed : CP_12P);
+      i_state_current = STATE_B;
       break;
     case STATE_C:
-      ledcWrite(CH_CP_CTRL, i_charge_speed);
-      chargingOn();
+      if (b_charging_enabled) {
+        ledcWrite(CH_CP_CTRL, i_charge_speed);
+        chargingOn();
+      } else {
+        ledcWrite(CH_CP_CTRL, CP_12P);
+        chargingOff();
+      }
       i_state_current = STATE_C;
       break;
     case STATE_FAULT:
@@ -178,6 +214,21 @@ bool EVSEController::isDiffSteady() {
 
 //-- Main Update Method --//
 void EVSEController::update() {
+  // While sleeping: wait for EV to release (pilot rises) or timeout, then open relay
+  if (i_state_current == STATE_SLEEPING) {
+    readPilot();
+    bool ev_released = (i_cpp_max >= TH_BC);
+    bool timed_out = (millis() - ul_sleep_start_ms) >= SLEEP_RELAY_OPEN_TIMEOUT_MS;
+    if (ev_released || timed_out) {
+      chargingOff();
+      i_state_current = STATE_B;
+      if (m_mqttHandler) {
+        m_mqttHandler->publishTransition('S', ev_released ? 'B' : 'T');
+      }
+    }
+    return;
+  }
+
   // // ########## DEBUG ##########
   // ul_readpilot_start_time = millis();
   // // ########## END DEBUG ##########
@@ -242,14 +293,14 @@ void EVSEController::publishState() {
   if (!m_mqttHandler) return;  // No MQTT handler available
   
   // Convert state to character
-  const char* sz_state_char = "";
-  if (i_state_current == STATE_A) sz_state_char = "A";
-  else if (i_state_current == STATE_B) sz_state_char = "B";
-  else if (i_state_current == STATE_C) sz_state_char = "C";
-  else sz_state_char = "Unknown";
+  const char* sz_state_char = "Unknown";
+  if (i_state_current == STATE_A)            sz_state_char = "A";
+  else if (i_state_current == STATE_B)       sz_state_char = "B";
+  else if (i_state_current == STATE_C)       sz_state_char = "C";
+  else if (i_state_current == STATE_SLEEPING) sz_state_char = "S";
 
   // Use MqttHandler utility method
-  m_mqttHandler->publishState(sz_state_char, i_cpp_max, i_cpp_min);
+  m_mqttHandler->publishState(sz_state_char, i_cpp_max, i_cpp_min, b_charging_enabled);
 }
 
 //-- Hardware setup (moved from main.cpp) --//

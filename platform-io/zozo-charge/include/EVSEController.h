@@ -11,6 +11,10 @@ private:
   // MQTT Handler for communication
   MqttHandler* m_mqttHandler;         // Injected dependency
 
+  // Charging authorization
+  bool b_charging_enabled = true;   // Default-on: charge immediately when car connects
+  unsigned long ul_sleep_start_ms = 0;
+
   // Control Pilot measurements
   int i_cpp_value;
   int i_cpp_max;
@@ -69,6 +73,10 @@ public:
   void setCppMin(int min_val) { i_cpp_min = min_val; }
   void setChargeSpeed(int speed);
 
+  // Charging authorization
+  void setChargingEnabled(bool enabled);
+  bool isChargingEnabled() const { return b_charging_enabled; }
+
   // State getters
   int getCurrentState() const { return i_state_current; }
   int getPreviousState() const { return i_state_previous; }
@@ -105,6 +113,7 @@ public:
   // State Management Functions
   void setState();                    // Main state controller
   void setStateFault();               // Set fault state
+  void enterSleep();                  // J1772 stop: CP to +12V then wait before opening relay
 
   // Relay Control Functions (OpenEVSE pattern)
   void chargingOn();                  // Close relay - start charging

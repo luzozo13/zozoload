@@ -46,7 +46,10 @@ class PZEM004Tv30; // PZEM type forward declaration
 #define STATE_A 1           // Vehicle not connected
 #define STATE_B 2           // Vehicle connected, not ready
 #define STATE_C 3           // Vehicle connected and ready/charging
+#define STATE_SLEEPING 4    // CP set to +12V, waiting before opening relay (J1772 stop sequence)
 #define STATE_FAULT -1      // Fault state
+
+#define SLEEP_RELAY_OPEN_TIMEOUT_MS 3000  // Max ms to wait for EV to release before forcing relay open
 
 //-- Control Pilot Thresholds (ADC values) --//
 // Based on J1772 specification voltage levels
