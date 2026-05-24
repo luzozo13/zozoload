@@ -92,40 +92,8 @@ void EVSEController::enterSleep() {
 }
 
 void EVSEController::updateChargeSpeed() {
-    int i_new_speed = i_charge_speed;
-
-    // ######## DEBUG ##########
-    const char* sz_msg = "";
-    // ######## END DEBUG ##########
-
-    if (digitalRead(B_R)) {
-      i_new_speed = CP_AMP_8;
-      // ######## DEBUG ##########
-      sz_msg = "B_8A";
-      // ######## END DEBUG ##########
-    } else if (digitalRead(B_G)) {
-      i_new_speed = CP_AMP_16;
-      // ######## DEBUG ##########
-      sz_msg = "B_16A";
-      // ######## END DEBUG ##########
-    } else if (digitalRead(B_B)) {
-      i_new_speed = CP_AMP_BOOST;
-      // ######## DEBUG ##########
-      sz_msg = "B_BOOST";
-      // ######## END DEBUG ##########
-    }
-    if (i_new_speed != i_charge_speed) {
-      // ######## DEBUG ##########
-      if (m_mqttHandler) {
-        m_mqttHandler->publishSpeed(sz_msg);
-      }
-      // ######## END DEBUG ##########
-      i_charge_speed = i_new_speed;
-      if (i_state_current == STATE_C) {
-        // Update PWM for new charge speed while charging
-        ledcWrite(CH_CP_CTRL, i_charge_speed);
-      }
-    }
+    // TODO: button-driven speed selection removed
+    // Placeholder for future local input handling (e.g. rotary encoder, display)
 }
 
 //-- Charging Control --//
@@ -229,19 +197,9 @@ void EVSEController::update() {
     return;
   }
 
-  // // ########## DEBUG ##########
-  // ul_readpilot_start_time = millis();
-  // // ########## END DEBUG ##########
-
   updateChargeSpeed();
 
   readPilot();
-
-
-  // // ########## DEBUG ##########
-  // ul_readpilot_end_time = millis();
-  // ul_readpilot_duration = ul_readpilot_end_time - ul_readpilot_start_time;
-  // // ########## END DEBUG ##########
 
   if (isStateDiff()) {
     if (isFirstStateDiff()) {
@@ -273,18 +231,11 @@ void EVSEController::update() {
     }
   }
   
-  // ########### DEBUG ##########
-  // Publish state to MQTT only every UL_STATE_PUBLISH_INTERVAL ms
   if (millis() - ul_last_state_publish > UL_STATE_PUBLISH_INTERVAL) {
-  // ########### END DEBUG ##########
-
     publishState();
     // PZEM telemetry is read/published at application level (main.cpp)
-
-  // ############ DEBUG ##########  
     ul_last_state_publish = millis();
   }
-  // ############ DEBUG ##########
 }
 
 //-- MQTT Publishing --//

@@ -25,51 +25,13 @@ EVSEController g_EvseController(g_mqttHandler);
 PZEM004Tv30 pzem(Serial, PZEM_RX_PIN, PZEM_TX_PIN);
 
 void initPZEM() {
-  // Initialize Serial with 9600 baud rate on pins 1,3
   Serial.begin(9600, SERIAL_8N1, PZEM_RX_PIN, PZEM_TX_PIN);
   delay(2000);
-  
-  if (g_mqttHandler.isConnected()) {
-    g_mqttHandler.publishDebugInit("PZEM: HardwareSerial started at 9600 baud on pins 1,3");
 
-    float test_voltage = pzem.voltage();
-    if (!isnan(test_voltage) && test_voltage > 0) {
-      char success_msg[60];
-      snprintf(success_msg, sizeof(success_msg), "PZEM: SUCCESS! Voltage=%.1fV", test_voltage);
-      g_mqttHandler.publishDebugComm(success_msg);
-    } else {
-      g_mqttHandler.publishDebugComm("PZEM: Communication failed - check wiring");
-    }
-    
-    uint8_t addr = pzem.readAddress(true);
-    if (addr != 0) {
-      char addr_msg[40];
-      snprintf(addr_msg, sizeof(addr_msg), "PZEM: Address=0x%02X", addr);
-      g_mqttHandler.publishDebugComm(addr_msg);
-    } else {
-      g_mqttHandler.publishDebugComm("PZEM: Address read failed (0x00)");
-    }
-  }
-}
-
-void debugPZEM() {
-  static unsigned long lastDebug = 0;
-  if (millis() - lastDebug > 10000) {
-    lastDebug = millis();
-    
-    if (g_mqttHandler.isConnected()) {
-      float voltage = pzem.voltage();
-      float current = pzem.current();
-      float power = pzem.power();
-      uint8_t addr = pzem.readAddress(false);
-      
-      char debug_msg[200];
-      snprintf(debug_msg, sizeof(debug_msg), 
-        "PZEM Debug - V:%.1f, I:%.3f, P:%.1f, Addr:0x%02X", 
-        voltage, current, power, addr);
-      g_mqttHandler.publishDebugComm(debug_msg);
-    }
-  }
+  float test_voltage = pzem.voltage();
+  bool pzem_ok = (!isnan(test_voltage) && test_voltage > 0);
+  g_mqttHandler.setPzemOk(pzem_ok);
+  g_mqttHandler.publishComm();
 }
 
 // MQTT broker settings
@@ -94,12 +56,15 @@ void setup() {
   }
 
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);
+  tzset();
 
   g_mqttHandler.setup(sz_mqtt_server, i_mqtt_port);
   g_mqttHandler.setEVSEController(g_EvseController);
   pubsubClient.setCallback(mqttCallback);
 
   reconnect();
+  g_mqttHandler.loadFromNVS();
   initPZEM();
 
   ArduinoOTA.setHostname("zozo-charge");
@@ -109,26 +74,11 @@ void setup() {
 void reconnect() {
   while (!g_mqttHandler.isConnected()) {
     if (g_mqttHandler.reconnect("zozo-charge")) {
-      // Connected
+      g_mqttHandler.publishComm();
     } else {
       delay(5000);
     }
   }
-}
-
-void publishTime() {
-  static unsigned long lastPublish = 0;
-  if (millis() - lastPublish < 60000) return;
-  lastPublish = millis();
-
-  time_t now = time(nullptr);
-  if (now < 24 * 3600) return; // not synced yet
-
-  struct tm t;
-  gmtime_r(&now, &t);
-  char buf[24];
-  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &t);
-  g_mqttHandler.publish(MQTT_DEBUG_TIME, buf);
 }
 
 void loop() {
@@ -138,10 +88,9 @@ void loop() {
     reconnect();
   }
   g_mqttHandler.loop();
-  debugPZEM();
   g_EvseController.update();
   readAndPublishPZEM();
-  publishTime();
+  g_mqttHandler.publishTime();
 }
 
 void readAndPublishPZEM() {
@@ -157,27 +106,14 @@ void readAndPublishPZEM() {
   float frequency = pzem.frequency();
   float pf = pzem.pf();
 
-  char debug_msg[128];
-  snprintf(debug_msg, sizeof(debug_msg), "Raw: V=%.1f, I=%.2f, P=%.1f, E=%.3f", voltage, current, power, energy);
-  if (g_mqttHandler.isConnected()) g_mqttHandler.publishDebugRead(debug_msg);
-
-  bool valid = false;
-  if (!isnan(voltage) && !isnan(current)) valid = true;
-
-  g_EvseController.setMeasurements(current, voltage, power, energy);
+  bool valid = !isnan(voltage) && !isnan(current);
 
   if (valid) {
-    snprintf(debug_msg, sizeof(debug_msg), "Valid: V=%.1fV, I=%.2fA, P=%.1fW, E=%.3fkWh", voltage, current, power, energy);
-    if (g_mqttHandler.isConnected()) g_mqttHandler.publishDebugRead(debug_msg);
-    if (g_mqttHandler.isConnected()) {
-      g_mqttHandler.publishVoltage(voltage);
-      g_mqttHandler.publishCurrent(current);
-      g_mqttHandler.publishPower(power);
-      g_mqttHandler.publishEnergy(energy);
-      g_mqttHandler.publishFrequency(frequency);
-      g_mqttHandler.publishPowerFactor(pf);
-    }
+    // valid read — telemetry published below
   } else {
-    if (g_mqttHandler.isConnected()) g_mqttHandler.publishDebugRead("All readings are NaN - Check connections!");
+    // invalid read — check connections
   }
+
+  g_EvseController.setMeasurements(current, voltage, power, energy);
+  g_mqttHandler.publishTelemetry(voltage, current, power, energy, frequency, pf);
 }

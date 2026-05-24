@@ -51,6 +51,18 @@ class PZEM004Tv30; // PZEM type forward declaration
 
 #define SLEEP_RELAY_OPEN_TIMEOUT_MS 3000  // Max ms to wait for EV to release before forcing relay open
 
+//-- Debug Flags (bitmask — each flag gates its corresponding state topic) --//
+#define DBG_DETAILS  0x01   // state/details  (EVSE state periodic)
+#define DBG_CHANGE   0x02   // state/change   (EVSE state transitions)
+#define DBG_PZEM     0x04   // state/pzem     (power meter telemetry)
+#define DBG_COMM     0x08   // state/comm     (connection status)
+#define DBG_TIME     0x10   // state/time     (NTP / uptime)
+
+//-- NVS Persistence --//
+// Bump NVS_SCHEMA_VERSION to force-reset debug defaults on next upload
+#define NVS_SCHEMA_VERSION  3
+#define DBG_DEFAULT_FLAGS   0x1F  // All 5 flags on by default
+
 //-- Control Pilot Thresholds (ADC values) --//
 // Based on J1772 specification voltage levels
 #define TH_AB 3770          // Threshold between State A and B (~11V)
