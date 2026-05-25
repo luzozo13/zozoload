@@ -59,9 +59,27 @@ class PZEM004Tv30; // PZEM type forward declaration
 #define DBG_TIME     0x10   // state/time     (NTP / uptime)
 
 //-- NVS Persistence --//
-// Bump NVS_SCHEMA_VERSION to force-reset debug defaults on next upload
-#define NVS_SCHEMA_VERSION  3
+// Bump NVS_SCHEMA_VERSION to force-reset all NVS settings on next upload
+#define NVS_SCHEMA_VERSION  5
 #define DBG_DEFAULT_FLAGS   0x1F  // All 5 flags on by default
+
+//-- Solar Tracking Mode --//
+// Closed-loop control: every SOLAR_LOOP_MS, compare solar production vs EVSE
+// consumption (PZEM). Surplus -> decrement PWM (more current, slow ramp-up);
+// deficit -> increment PWM (less current, fast back-off). PWM clamped to
+// [SOLAR_PWM_MIN, SOLAR_PWM_MAX]. Deadband prevents flapping near zero diff.
+#define SOLAR_PWM_MIN     125   // Max charging current (lowest PWM duty)
+#define SOLAR_PWM_MAX     221   // Min charging current = 8A (CP_AMP_8)
+#define SOLAR_DEADBAND_W  500   // No change when |solar - evse_power| <= this
+#define SOLAR_STEP_DOWN   5     // PWM decrement step (more current) on surplus
+#define SOLAR_STEP_UP     10    // PWM increment step (less current) on deficit
+#define SOLAR_LOOP_MS     10000 // Control loop period (ms)
+
+//-- Unified config NVS defaults --//
+#define NVS_DEFAULT_HOSTNAME      "zozo-charge"
+#define NVS_DEFAULT_PZEM_ADDR     0x01
+#define NVS_DEFAULT_PZEM_ACQ_RATE 5     // seconds
+#define NVS_DEFAULT_PZEM_PUB_RATE 30    // seconds (state/pzem publish interval)
 
 //-- Control Pilot Thresholds (ADC values) --//
 // Based on J1772 specification voltage levels
