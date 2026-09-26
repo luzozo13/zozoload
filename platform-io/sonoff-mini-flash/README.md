@@ -20,8 +20,8 @@ Two independent devices share the same codebase; identity and power topic are in
 
 | Env | Hostname | OTA IP | Power topic |
 |---|---|---|---|
-| `sonoff_mini_edf` | `sonoff-mini-pzem-edf` | 192.168.1.15 | `/home/power/edf` |
-| `sonoff_mini_solarprod` | `sonoff-mini-pzem-solar` | 192.168.1.41 | `/home/power/solar` |
+| `sonoff_mini_edf` | `sonoff-mini-pzem-edf` | 192.168.1.15 | `home/power/edf` |
+| `sonoff_mini_solar` | `sonoff-mini-pzem-solar` | 192.168.1.41 | `home/power/solar` |
 
 Hostname is **compile-time only** — it cannot be changed at runtime.
 
@@ -53,7 +53,7 @@ Edit `include/mqtt_config.h` — set `MQTT_SERVER` to your broker IP.
 pio run -e sonoff_mini_edf --target upload
 
 # Solar device
-pio run -e sonoff_mini_solarprod --target upload
+pio run -e sonoff_mini_solar --target upload
 ```
 
 ---
@@ -64,15 +64,15 @@ pio run -e sonoff_mini_solarprod --target upload
 
 | Topic | Description |
 |---|---|
-| `{hostname}/state/pzem` | JSON: `ts, device, V, I, W, kWh, Hz, PF` (or `error` on read fail) |
+| `{hostname}/state/pzem` | JSON: `ts, device, V, I, W, kWh, Hz, PF`; or `error: pzem_read_failed` (no answer) / `error: pzem_stale` (frozen reading, see below) |
 | `{hostname}/state/comm` | JSON: `ts, device, ip, wifi, mqtt, pzem` |
 | `{hostname}/state/time` | JSON: `ts, device, uptime_s` |
 | `{hostname}/state/debug` | JSON: `{"debug":"on"}` / `{"debug":"off"}` |
-| `{hostname}/state/ota` | OTA progress / confirmation strings |
-| `/home/power/edf` or `/home/power/solar` | Plain watts float — no hostname prefix |
+| `{hostname}/state/ota` | OTA progress / confirmation strings, and stale-sensor recovery messages |
+| `home/power/edf` or `home/power/solar` | Plain watts float — no hostname prefix |
 
 > `state/pzem`, `state/comm`, `state/time` are only published when **debug is enabled**.  
-> `publishPower()` always publishes regardless of debug state.
+> `publishPower()` publishes regardless of debug state, but not while the reading is failed or stale.
 
 ### Commands (subscribe → device responds)
 
@@ -84,6 +84,30 @@ pio run -e sonoff_mini_solarprod --target upload
 | `{hostname}/set/mqtt/server` | `"192.168.1.22"` | Saved to EEPROM; restart to apply |
 | `{hostname}/set/mqtt/port` | `"1883"` | Saved to EEPROM; restart to apply |
 | `{hostname}/set/restart` | (any) | Restart device |
+
+---
+
+## Stale-reading watchdog
+
+A live PZEM never returns the exact same `V, I, W, kWh, Hz, PF` for minutes:
+voltage alone moves in 0.1 V steps, even at 0 W. If every reading is identical
+for **5 min and at least 5 reads**, the reading is treated as frozen:
+
+1. `state/pzem` reports `{"error":"pzem_stale","kWh":…}` and
+   `home/power/*` stops publishing (no frozen value is ever republished);
+   `state/comm` reports `pzem: fail`.
+2. The PZEM driver is re-initialised (`state/ota`: `pzem stale: re-initialising sensor`).
+3. If still frozen 5 min later, the ESP restarts
+   (`state/ota`: `pzem still stale after re-init: restarting`).
+
+Tune with `-DPZEM_STALE_MS=…` / `-DPZEM_STALE_MIN_READS=…`.
+
+**Why:** PZEM-004T-v30 **1.1.x** (`_lastRead + UPDATE_TIME > millis()` with a
+64-bit `_lastRead`) returns its cached values forever once `millis()` wraps
+after **49.7 days** of uptime. This matches the ~27 h freeze of both devices
+found on 2026-09-26 (identical readings, `kWh` not moving; a restart fixed it). `platformio.ini` now requires **≥ 1.2.1**, which
+fixes the comparison upstream (commit `4f8687d`). The watchdog stays as a
+safety net for any other stuck read path.
 
 ---
 
@@ -109,8 +133,19 @@ Schema version: **7** — mismatch triggers auto-reset to compile-time defaults.
 | `-DFORCE_EEPROM_RESET` | Overwrite entire EEPROM with struct defaults on every boot |
 | `-DFORCE_DEBUG_ENABLED` | Force `debugEnabled = true`, save to EEPROM |
 | `-DFORCE_DEBUG_DISABLED` | Force `debugEnabled = false`, save to EEPROM |
+| `-DPZEM_STALE_MS` / `-DPZEM_STALE_MIN_READS` | Stale-reading watchdog thresholds (default 300000 ms / 5 reads) |
 
-Remove the flag and reflash after one-time provisioning.
+Remove the `FORCE_*` flags and reflash after one-time provisioning. Don't
+leave `FORCE_DEBUG_DISABLED` in: it hides `state/pzem` on every boot, which is
+exactly the topic that shows a frozen sensor.
+
+The debug setting is kept in EEPROM, so a device that was built with
+`FORCE_DEBUG_DISABLED` stays silent after reflashing until you send once:
+
+```bash
+mosquitto_pub -h 192.168.1.22 -t 'sonoff-mini-pzem-edf/set/debug'   -m on
+mosquitto_pub -h 192.168.1.22 -t 'sonoff-mini-pzem-solar/set/debug' -m on
+```
 
 ---
 
