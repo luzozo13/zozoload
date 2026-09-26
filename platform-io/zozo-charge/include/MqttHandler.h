@@ -34,18 +34,10 @@ private:
     //-- Flag: main loop should do a fresh PZEM read then call publishAllDebug() --//
     bool m_poll_requested = false;
 
-    //-- Solar tracking --//
-    bool m_solar_tracking = true;           // Default ON: active immediately on boot
-    unsigned long m_solar_last_step_ms = 0; // Timestamp of last control step
-    unsigned long m_solar_rx_ms = 0;        // millis() of the last solar power message
-    bool m_solar_rx_seen = false;           // any solar power message received since boot
-
-    void getTimestamp(char* buf, size_t len);
     void publishDebugStatus();
     String ht(const char* suffix);   // build topic: m_hostname + suffix
 
     void saveConfig();               // write unified config fields to NVS
-    void applySolarTracking();       // closed-loop solar control step
 
 public:
     MqttHandler(PubSubClient& client);
@@ -61,6 +53,8 @@ public:
     void publish(const char* topic, const char* message, bool retain);
     void subscribe(const char* topic);
     bool isConnected() const;
+    void getTimestamp(char* buf, size_t len);
+    void publishSolarTracking(const char* message);
 
     //-- Existing state publishers --//
     void publishState(const char* state, int cpp_max, int cpp_min, bool charging_enabled);
@@ -83,10 +77,11 @@ public:
     uint8_t getDebugFlags() const { return m_debug_flags; }
     bool isDebugEnabled() const { return m_debug_enabled; }
 
-    //-- External data --//
+    //-- External data (pass-through to EVSEController) --//
     float getSolarWatts() const { return m_solar_watts; }
     float getHouseWatts() const { return m_house_watts; }
-    bool isSolarTracking() const { return m_solar_tracking; }
+    void setSolarWatts(float watts);
+    void setSolarTracking(bool enabled);
 
     //-- Unified config getters (used by main.cpp) --//
     const char* getHostname()    const { return m_hostname; }

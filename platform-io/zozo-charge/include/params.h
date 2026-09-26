@@ -32,7 +32,7 @@ class PZEM004Tv30; // PZEM type forward declaration
 //-- PZEM Current Measurement --//
 #define PZEM_RX_PIN 3      // PZEM RX pin (connect to PZEM TX)
 #define PZEM_TX_PIN 1      // PZEM TX pin (connect to PZEM RX)
-#define PZEM_ADDR 0x01      // PZEM device address
+#define PZEM_ADDR 0x04      // PZEM device address
 #define PZEM_UPDATE_INTERVAL 5000  // Update every 5 seconds
 #define PZEM_TEST_MODE 0    // Set to 1 for simulated readings, 0 for real hardware
 
@@ -68,7 +68,7 @@ class PZEM004Tv30; // PZEM type forward declaration
 // consumption (PZEM). Surplus -> decrement PWM (more current, slow ramp-up);
 // deficit -> increment PWM (less current, fast back-off). PWM clamped to
 // [SOLAR_PWM_MIN, SOLAR_PWM_MAX]. Deadband prevents flapping near zero diff.
-#define SOLAR_PWM_MIN     125   // Max charging current (lowest PWM duty)
+#define SOLAR_PWM_MIN     110   // Max charging current (lowest PWM duty)
 #define SOLAR_PWM_MAX     221   // Min charging current = 8A (CP_AMP_8)
 #define SOLAR_DEADBAND_W  500   // No change when |solar - evse_power| <= this
 #define SOLAR_STEP_DOWN   5     // PWM decrement step (more current) on surplus
@@ -82,7 +82,7 @@ class PZEM004Tv30; // PZEM type forward declaration
 
 //-- Unified config NVS defaults --//
 #define NVS_DEFAULT_HOSTNAME      "zozo-charge"
-#define NVS_DEFAULT_PZEM_ADDR     0x01
+#define NVS_DEFAULT_PZEM_ADDR     0x04
 #define NVS_DEFAULT_PZEM_ACQ_RATE 5     // seconds
 #define NVS_DEFAULT_PZEM_PUB_RATE 30    // seconds (state/pzem publish interval)
 

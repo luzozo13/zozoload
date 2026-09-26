@@ -100,8 +100,10 @@ bool MqttHandler::reconnect() {
         subscribe(MQTT_SET_DEBUG_FLAGS);
         subscribe(MQTT_GET_DEBUG);
         subscribe(MQTT_SET_SOLAR_TRACKING);
-        subscribe(MQTT_SOLAR_PRODUCTION_WATTS);
-        subscribe(MQTT_HOUSE_CONSUMPTION_WATTS);
+        subscribe(MQTT_SOLAR_PRODUCTION_POWER);
+        subscribe(MQTT_HOUSE_CONSUMPTION_POWER);
+        subscribe(MQTT_SET_MODE);
+        subscribe(MQTT_SET_CHEAP);
         // Unified topics (broadcast + per-device config)
         subscribe(MQTT_GET_ALL);
         subscribe(ht(TOPIC_UNIFIED_HOSTNAME).c_str());
@@ -121,7 +123,6 @@ bool MqttHandler::reconnect() {
 
 void MqttHandler::loop() {
     if (m_pubsubClient) m_pubsubClient->loop();
-    applySolarTracking();
 }
 
 void MqttHandler::subscribe(const char* topic) {
@@ -157,6 +158,19 @@ void MqttHandler::getTimestamp(char* buf, size_t len) {
     strftime(buf, len, "%Y-%m-%dT%H:%M:%SZ", &t);
 }
 
+void MqttHandler::publishSolarTracking(const char* message) {
+    publish(MQTT_STATE_SOLAR_TRACKING, message);
+}
+
+void MqttHandler::setSolarWatts(float watts) {
+    m_solar_watts = watts;
+    if (m_evseController) m_evseController->setSolarWatts(watts);
+}
+
+void MqttHandler::setSolarTracking(bool enabled) {
+    if (m_evseController) m_evseController->setSolarTracking(enabled);
+}
+
 //-- State Publishing --//
 
 void MqttHandler::publishState(const char* state, int cpp_max, int cpp_min, bool charging_enabled) {
@@ -164,13 +178,14 @@ void MqttHandler::publishState(const char* state, int cpp_max, int cpp_min, bool
     if (m_debug_enabled && !(m_debug_flags & DBG_DETAILS)) return;
     char ts[24];
     getTimestamp(ts, sizeof(ts));
+    bool solar_tracking_active = (m_evseController && m_evseController->isSolarTracking());
     char sz_msg[160];
     snprintf(sz_msg, sizeof(sz_msg),
         "{\"ts\":\"%s\",\"state\":\"%s\",\"CPP_max\":%d,\"CPP_min\":%d,\"charging_enabled\":%s,\"charging\":\"%s\",\"solar_tracking\":\"%s\"}",
         ts, state, cpp_max, cpp_min,
         charging_enabled ? "true" : "false",
         (state[0] == 'C') ? "on" : "off",
-        m_solar_tracking ? "on" : "off");
+        solar_tracking_active ? "on" : "off");
     publish(MQTT_STATE_DETAILS, sz_msg);
 }
 
@@ -388,53 +403,6 @@ void MqttHandler::publishAllDebug() {
     publishDebugStatus();
 }
 
-//-- Solar Tracking Control Loop --//
-
-void MqttHandler::applySolarTracking() {
-    if (!m_solar_tracking) return;
-    if (!m_evseController) return;
-
-    unsigned long now = millis();
-    if (now - m_solar_last_step_ms < SOLAR_LOOP_MS) return;
-    m_solar_last_step_ms = now;
-
-    float evse_power = m_evseController->getPower();
-    float diff = m_solar_watts - evse_power;
-    int pwm_current = m_evseController->getChargeSpeed();
-    int pwm_next = pwm_current;
-    const char* action = "hold";
-    long solar_age_s = m_solar_rx_seen ? (long)((now - m_solar_rx_ms) / 1000UL) : -1;
-
-    if (!m_solar_rx_seen || now - m_solar_rx_ms > SOLAR_STALE_MS) {
-        pwm_next = SOLAR_PWM_MAX;      // no fresh solar data: fall back to minimum current
-        action = "stale";
-    } else if (diff > SOLAR_DEADBAND_W) {
-        pwm_next -= SOLAR_STEP_DOWN;   // surplus: ramp up current (lower PWM)
-        action = "down";
-    } else if (diff < -SOLAR_DEADBAND_W) {
-        pwm_next += SOLAR_STEP_UP;     // deficit: back off current (higher PWM)
-        action = "up";
-    }
-
-    if (pwm_next < SOLAR_PWM_MIN) pwm_next = SOLAR_PWM_MIN;
-    if (pwm_next > SOLAR_PWM_MAX) pwm_next = SOLAR_PWM_MAX;
-
-    if (pwm_next != pwm_current) {
-        m_evseController->setChargeSpeed(pwm_next);
-    }
-
-    // Publish debug telemetry every cycle
-    if (isConnected()) {
-        char ts[24];
-        getTimestamp(ts, sizeof(ts));
-        char sz_msg[192];
-        snprintf(sz_msg, sizeof(sz_msg),
-            "{\"ts\":\"%s\",\"solar_w\":%.1f,\"solar_age_s\":%ld,\"evse_w\":%.1f,\"diff_w\":%.1f,\"pwm\":%d,\"pwm_next\":%d,\"action\":\"%s\"}",
-            ts, m_solar_watts, solar_age_s, evse_power, diff, pwm_current, pwm_next, action);
-        publish(MQTT_STATE_SOLAR_TRACKING, sz_msg);
-    }
-}
-
 //-- Message Handling --//
 
 void MqttHandler::handleMessage(char* topic, uint8_t* payload, unsigned int length) {
@@ -493,21 +461,38 @@ void MqttHandler::handleMessage(char* topic, uint8_t* payload, unsigned int leng
     }
 
     if (strcmp(topic, MQTT_SET_SOLAR_TRACKING) == 0) {
-        m_solar_tracking = (strcmp((char*)payload, "on") == 0);
+        bool enabled = (strcmp((char*)payload, "on") == 0);
+        if (m_evseController) m_evseController->setSolarTracking(enabled);
         snprintf(sz_conf, sizeof(sz_conf),
             "{\"cmd\":\"solar_tracking\",\"result\":\"ok\",\"value\":\"%s\",\"ts\":\"%s\"}",
-            m_solar_tracking ? "on" : "off", ts);
+            enabled ? "on" : "off", ts);
         publish(MQTT_SET_SOLAR_TRACKING_STATUS, sz_conf);
     }
 
-    if (strcmp(topic, MQTT_SOLAR_PRODUCTION_WATTS) == 0) {
-        m_solar_watts = atof((char*)payload);
-        m_solar_rx_ms = millis();
-        m_solar_rx_seen = true;
+    if (strcmp(topic, MQTT_SOLAR_PRODUCTION_POWER) == 0) {
+        float watts = atof((char*)payload);
+        setSolarWatts(watts);
     }
 
-    if (strcmp(topic, MQTT_HOUSE_CONSUMPTION_WATTS) == 0) {
+    if (strcmp(topic, MQTT_HOUSE_CONSUMPTION_POWER) == 0) {
         m_house_watts = atof((char*)payload);
+    }
+
+    if(strcmp(topic, MQTT_SET_MODE) == 0) {
+        if (m_evseController) {
+            if (strcmp((char*)payload, "boost") == 0) {
+                m_evseController->setEvseMode(MODE_BOOST);
+            } else if (strcmp((char*)payload, "solar") == 0) {
+                m_evseController->setEvseMode(MODE_SOLAR);
+            } else if (strcmp((char*)payload, "cheap") == 0) {
+                m_evseController->setEvseMode(MODE_CHEAP);
+            }
+        }
+    }
+
+    if (strcmp(topic, MQTT_SET_CHEAP) == 0) {
+        bool is_cheap = (strcmp((char*)payload, "on") == 0);
+        if (m_evseController) m_evseController->setChargeCheap(is_cheap);
     }
 
     // ── Unified config commands ───────────────────────────────────────────────

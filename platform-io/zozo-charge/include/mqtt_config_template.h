@@ -1,8 +1,8 @@
 #pragma once
 
 //-- External System Topics (Solar/House) - Customize per installation --//
-#define MQTT_SOLAR_PRODUCTION_WATTS "<SOLAR_PRODUCTION_WATTS_TOPIC>"
-#define MQTT_HOUSE_CONSUMPTION_WATTS "<HOUSE_CONSUMPTION_WATTS_TOPIC>"
+#define MQTT_SOLAR_PRODUCTION_POWER "<SOLAR_PRODUCTION_POWER_TOPIC>"
+#define MQTT_HOUSE_CONSUMPTION_POWER "<HOUSE_CONSUMPTION_POWER_TOPIC>"
 
 //-- MQTT Broker Configuration --//
 #define MQTT_SERVER "<MQTT_SERVER_ADDRESS>"
@@ -16,6 +16,7 @@
 #define MQTT_STATE_TIME     MQTT_TOPIC "/state/time"
 #define MQTT_STATE_DEBUG    MQTT_TOPIC "/state/debug"
 #define MQTT_STATE_PWM      MQTT_TOPIC "/state/pwm"
+#define MQTT_STATE_SOLAR_TRACKING      MQTT_TOPIC "/state/solar_tracking"
 
 //-- Telemetry Topics --//
 #define MQTT_TELEMETRY      MQTT_TOPIC "/state/pzem"
@@ -25,7 +26,9 @@
 #define MQTT_GET_DEBUG      MQTT_TOPIC "/get/debug"
 
 //-- Command Topics --//
-#define MQTT_SET_CHARGE_RATE        MQTT_TOPIC "/set/charge_rate"
+#define MQTT_SET_MODE               MQTT_TOPIC "/set/mode"
+#define MQTT_SET_CHEAP             MQTT_TOPIC "/set/cheap"
+#define MQTT_SET_CHARGE_RATE       MQTT_TOPIC "/set/charge_rate"
 #define MQTT_SET_CHARGE_RATE_STATUS MQTT_TOPIC "/set/charge_rate/status"
 #define MQTT_SET_DELAY              MQTT_TOPIC "/set/delay"
 #define MQTT_SET_DELAY_STATUS       MQTT_TOPIC "/set/delay/status"
@@ -33,6 +36,8 @@
 #define MQTT_SET_DEBUG_STATUS       MQTT_TOPIC "/set/debug/status"
 #define MQTT_SET_DEBUG_FLAGS        MQTT_TOPIC "/set/debug_flags"
 #define MQTT_SET_DEBUG_FLAGS_STATUS MQTT_TOPIC "/set/debug_flags/status"
+#define MQTT_SET_SOLAR_TRACKING        MQTT_TOPIC "/set/solar_tracking"
+#define MQTT_SET_SOLAR_TRACKING_STATUS MQTT_TOPIC "/set/solar_tracking/status"
 
 //-- Unified configuration commands (common to all PZEM devices) --//
 // The broadcast topic has no device prefix; all three devices subscribe to it.

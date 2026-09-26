@@ -3,6 +3,12 @@
 
 #include "params.h" // pull in pin/constants
 
+enum EvseMode {
+  MODE_BOOST = 0,
+  MODE_SOLAR = 1,
+  MODE_CHEAP = 2
+};
+
 // Forward declarations
 class MqttHandler;
 
@@ -47,6 +53,19 @@ private:
   unsigned long ul_readpilot_duration = 0;
   unsigned long ul_last_state_publish = 0;
 
+  EvseMode m_active_mode = MODE_SOLAR; // Default mode
+  bool m_is_charge_cheap = false;
+
+  // Solar tracking state
+  bool b_solar_tracking = true;
+  unsigned long ul_solar_last_step_ms = 0;
+  unsigned long ul_solar_rx_ms = 0;
+  bool b_solar_rx_seen = false;
+  float f_solar_watts = 0.0f;
+
+  // Solar tracking control loop
+  void applySolarTracking();
+
 public:
   // Constructors
   EVSEController();                          // Default constructor (no MQTT)
@@ -76,6 +95,11 @@ public:
   // Charging authorization
   void setChargingEnabled(bool enabled);
   bool isChargingEnabled() const { return b_charging_enabled; }
+
+  // Mode getters/setters
+  void setChargeCheap(bool is_cheap) { m_is_charge_cheap = is_cheap; }
+  void setEvseMode(EvseMode mode);
+  EvseMode getEvseMode() const { return m_active_mode; };
 
   // State getters
   int getCurrentState() const { return i_state_current; }
@@ -122,6 +146,11 @@ public:
   // Control Functions
   void updateChargeSpeed();           // Update charging current
   void publishState();                // Publish state via MQTT
-  // Allow application to update measurement storage
   void setMeasurements(float current, float voltage, float power, float energy);
+
+  // Solar tracking control
+  void setSolarTracking(bool enabled) { b_solar_tracking = enabled; }
+  void setSolarWatts(float watts);
+  bool isSolarTracking() const { return b_solar_tracking; }
+  float getSolarWatts() const { return f_solar_watts; }
 };
