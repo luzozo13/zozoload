@@ -51,6 +51,14 @@ class PZEM004Tv30; // PZEM type forward declaration
 
 #define SLEEP_RELAY_OPEN_TIMEOUT_MS 3000  // Max ms to wait for EV to release before forcing relay open
 
+//-- CP Fault Detection (state D/E: CP below TH_CD, e.g. CP shorted to ground) --//
+// 0 = report only: a steady low CP is published as a "cp_fault_seen" event on
+//     state/change, but the state machine ignores it (previous behaviour).
+// 1 = enforce: a steady low CP goes to STATE_FAULT (relay open, FLT_CTRL high).
+// Run with 0 first and check no event shows up during normal charging.
+#define FAULT_DETECT_ENFORCE 0
+#define FAULT_RETRY_MS       30000  // Min time held in STATE_FAULT before it may clear
+
 //-- Debug Flags (bitmask — each flag gates its corresponding state topic) --//
 #define DBG_DETAILS  0x01   // state/details  (EVSE state periodic)
 #define DBG_CHANGE   0x02   // state/change   (EVSE state transitions)
@@ -79,6 +87,14 @@ class PZEM004Tv30; // PZEM type forward declaration
 // the last value and falls back to minimum current (SOLAR_PWM_MAX) until data
 // comes back, instead of charging from the grid on a stale surplus.
 #define SOLAR_STALE_MS    180000
+// Solar pause/resume (anti-flicker): when already at minimum current and still
+// in deficit (or solar data stale), pause charging instead of drawing from the
+// grid. Minimum on/off times keep the contactor from cycling on unsteady sun.
+#define SOLAR_PAUSE_AFTER_MS   600000   // Deficit at min current this long -> pause
+#define SOLAR_MIN_ON_MS        900000   // Never pause sooner than this after charging (re)started
+#define SOLAR_MIN_PAUSE_MS    1200000   // Once paused, stay paused at least this long
+#define SOLAR_RESUME_W           2300   // Solar production needed to resume (~8A x 230V + margin)
+#define SOLAR_RESUME_AFTER_MS  600000   // Production >= SOLAR_RESUME_W this long -> resume
 
 //-- Unified config NVS defaults --//
 #define NVS_DEFAULT_HOSTNAME      "zozo-charge"
@@ -107,6 +123,9 @@ class PZEM004Tv30; // PZEM type forward declaration
 
 // Publishing and communication intervals
 #define UL_STATE_PUBLISH_INTERVAL 10000  // State publishing interval (ms)
+#define MQTT_RECONNECT_INTERVAL   10000  // Min ms between MQTT reconnect attempts (non-blocking)
+#define WIFI_CONNECT_TIMEOUT_MS   20000  // Max wait for WiFi in setup(), then continue offline
+#define WDT_TIMEOUT_S             10     // Task watchdog: reboot (relay opens) if loop() hangs
 
 // Legacy timing (for compatibility)
 #define STATE_CHANGE_DEBOUNCE 10

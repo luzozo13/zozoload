@@ -59,6 +59,7 @@ public:
     //-- Existing state publishers --//
     void publishState(const char* state, int cpp_max, int cpp_min, bool charging_enabled);
     void publishTransition(char prev_state, char new_state);
+    void publishEvent(const char* event, int cpp_max, int cpp_min);
     void publishSpeed(int pwm);
     void publishPwm();
     void publishTelemetry(float voltage, float current, float power, float energy, float frequency, float pf);

@@ -179,13 +179,15 @@ void MqttHandler::publishState(const char* state, int cpp_max, int cpp_min, bool
     char ts[24];
     getTimestamp(ts, sizeof(ts));
     bool solar_tracking_active = (m_evseController && m_evseController->isSolarTracking());
-    char sz_msg[160];
+    bool solar_paused = (m_evseController && m_evseController->isSolarPaused());
+    char sz_msg[200];
     snprintf(sz_msg, sizeof(sz_msg),
-        "{\"ts\":\"%s\",\"state\":\"%s\",\"CPP_max\":%d,\"CPP_min\":%d,\"charging_enabled\":%s,\"charging\":\"%s\",\"solar_tracking\":\"%s\"}",
+        "{\"ts\":\"%s\",\"state\":\"%s\",\"CPP_max\":%d,\"CPP_min\":%d,\"charging_enabled\":%s,\"charging\":\"%s\",\"solar_tracking\":\"%s\",\"solar_paused\":%s}",
         ts, state, cpp_max, cpp_min,
         charging_enabled ? "true" : "false",
         (state[0] == 'C') ? "on" : "off",
-        solar_tracking_active ? "on" : "off");
+        solar_tracking_active ? "on" : "off",
+        solar_paused ? "true" : "false");
     publish(MQTT_STATE_DETAILS, sz_msg);
 }
 
@@ -198,6 +200,18 @@ void MqttHandler::publishTransition(char prev_state, char new_state) {
     snprintf(sz_msg, sizeof(sz_msg),
         "{\"ts\":\"%s\",\"from\":\"%c\",\"to\":\"%c\"}",
         ts, prev_state, new_state);
+    publish(MQTT_STATE_CHANGE, sz_msg);
+}
+
+void MqttHandler::publishEvent(const char* event, int cpp_max, int cpp_min) {
+    if (!isConnected()) return;
+    if (m_debug_enabled && !(m_debug_flags & DBG_CHANGE)) return;
+    char ts[24];
+    getTimestamp(ts, sizeof(ts));
+    char sz_msg[120];
+    snprintf(sz_msg, sizeof(sz_msg),
+        "{\"ts\":\"%s\",\"event\":\"%s\",\"CPP_max\":%d,\"CPP_min\":%d}",
+        ts, event, cpp_max, cpp_min);
     publish(MQTT_STATE_CHANGE, sz_msg);
 }
 
@@ -220,7 +234,7 @@ void MqttHandler::publishPwm() {
     int current_pwm = 0;
     if (m_evseController) {
         int s = m_evseController->getCurrentState();
-        bool enabled = m_evseController->isChargingEnabled();
+        bool enabled = m_evseController->isChargeAllowed();
         if (s == STATE_C && enabled) current_pwm = setpoint;
     }
     char ts[24];
@@ -405,7 +419,12 @@ void MqttHandler::publishAllDebug() {
 
 //-- Message Handling --//
 
-void MqttHandler::handleMessage(char* topic, uint8_t* payload, unsigned int length) {
+void MqttHandler::handleMessage(char* topic, uint8_t* raw, unsigned int length) {
+    // Copy into a local NUL-terminated buffer: writing raw[length] could go one
+    // byte past the PubSubClient buffer when a message fills it completely.
+    char payload[128];
+    if (length > sizeof(payload) - 1) length = sizeof(payload) - 1;
+    memcpy(payload, raw, length);
     payload[length] = '\0';
     char ts[24];
     getTimestamp(ts, sizeof(ts));
@@ -425,14 +444,8 @@ void MqttHandler::handleMessage(char* topic, uint8_t* payload, unsigned int leng
     if (strcmp(topic, MQTT_SET_DELAY) == 0) {
         bool enable = (strcmp((char*)payload, "off") == 0);
         if (m_evseController) m_evseController->setChargingEnabled(enable);
-        const char* state_str = "?";
-        if (m_evseController) {
-            int s = m_evseController->getCurrentState();
-            if (s == STATE_A) state_str = "A";
-            else if (s == STATE_B) state_str = "B";
-            else if (s == STATE_C) state_str = "C";
-            else if (s == STATE_SLEEPING) state_str = "S";
-        }
+        char state_str[2] = { '?', '\0' };
+        if (m_evseController) state_str[0] = stateChar(m_evseController->getCurrentState());
         snprintf(sz_conf, sizeof(sz_conf),
             "{\"cmd\":\"delay\",\"result\":\"ok\",\"delay\":\"%s\",\"state\":\"%s\",\"ts\":\"%s\"}",
             enable ? "off" : "on", state_str, ts);

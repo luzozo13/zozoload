@@ -12,6 +12,18 @@ enum EvseMode {
 // Forward declarations
 class MqttHandler;
 
+// One-letter state code used in MQTT payloads (A, B, C, S=sleeping, F=fault, U=unknown)
+inline char stateChar(int state) {
+  switch (state) {
+    case STATE_A:        return 'A';
+    case STATE_B:        return 'B';
+    case STATE_C:        return 'C';
+    case STATE_SLEEPING: return 'S';
+    case STATE_FAULT:    return 'F';
+    default:             return 'U';
+  }
+}
+
 class EVSEController {
 private:
   // MQTT Handler for communication
@@ -20,6 +32,12 @@ private:
   // Charging authorization
   bool b_charging_enabled = true;   // Default-on: charge immediately when car connects
   unsigned long ul_sleep_start_ms = 0;
+
+  // CP fault detection (state D/E)
+  unsigned long ul_fault_start_ms = 0;
+  bool b_cp_low = false;              // CP max currently below TH_CD
+  bool b_cp_low_reported = false;     // "cp_fault_seen" already published for this episode
+  unsigned long ul_cp_low_start_ms = 0;
 
   // Control Pilot measurements
   int i_cpp_value;
@@ -63,8 +81,24 @@ private:
   bool b_solar_rx_seen = false;
   float f_solar_watts = 0.0f;
 
+  // Solar pause/resume (anti-flicker)
+  bool b_solar_paused = false;
+  bool b_solar_soft_start = false;    // After a resume, restart at min current instead of 16A
+  bool b_solar_was_charging = false;
+  unsigned long ul_solar_charge_start_ms = 0;
+  bool b_solar_deficit_timing = false;
+  unsigned long ul_solar_deficit_start_ms = 0;
+  unsigned long ul_solar_pause_start_ms = 0;
+  bool b_solar_resume_timing = false;
+  unsigned long ul_solar_resume_start_ms = 0;
+
   // Solar tracking control loop
   void applySolarTracking();
+  void setSolarPaused(bool paused);
+  void applyChargingGate(bool was_allowed);  // Act on a change of isChargeAllowed()
+  void checkCpFault();                       // Report-only CP fault detection
+  void publishSolarTelemetry(const char* action, float evse_power, float diff,
+                             int pwm_current, int pwm_next);
 
 public:
   // Constructors
@@ -95,6 +129,9 @@ public:
   // Charging authorization
   void setChargingEnabled(bool enabled);
   bool isChargingEnabled() const { return b_charging_enabled; }
+  // Effective authorization: enabled by user/mode AND not paused by solar tracking
+  bool isChargeAllowed() const { return b_charging_enabled && !b_solar_paused; }
+  bool isSolarPaused() const { return b_solar_paused; }
 
   // Mode getters/setters
   void setChargeCheap(bool is_cheap) { m_is_charge_cheap = is_cheap; }

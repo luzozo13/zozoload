@@ -74,28 +74,42 @@ Before compiling, configure WiFi and MQTT settings:
 
 ### 3. MQTT Topics
 
-The system publishes to these topics (base: `evse-topic/`):
+All topics below are prefixed with `MQTT_TOPIC` (see `include/mqtt_config.h`).
 
-**EVSE Control & Status:**
-- `state/current` - Current EVSE state
-- `state/change` - State transitions
-- `charge_speed` - Charging speed (0-255 PWM)
+**State (published by the charger):**
+- `state/details` - Periodic EVSE state: `state` (A, B, C, S = sleeping, F = fault), `CPP_max`/`CPP_min`, `charging_enabled`, `solar_tracking`, `solar_paused`
+- `state/change` - State transitions (`{"from":"B","to":"C"}`) and events (`{"event":"cp_fault_seen",...}`)
+- `state/pwm` - Current PWM and setpoint (retained)
+- `state/solar_tracking` - Solar control loop telemetry: `action` (`hold`, `down`, `up`, `stale`, `pause`, `paused`, `resume`), `deficit_s`, `paused_s`, `resume_s`
+- `state/pzem` - PZEM telemetry (V, I, W, kWh, Hz, PF)
+- `state/comm`, `state/time`, `state/debug` - Connection, time and debug status
 
-**PZEM Telemetry:**
-- `voltage` - Voltage in Volts (V)
-- `current` - Current in Amps (A)
-- `power` - Power in Watts (W)
-- `energy` - Energy in kWh
-- `frequency` - AC frequency in Hz
-- `power_factor` - Power factor (0-1)
+**Commands (subscribed by the charger):**
+- `set/mode` - `boost` | `solar` | `cheap`
+- `set/cheap` - `on` | `off` (cheap-tariff window, used by `cheap` mode)
+- `set/charge_rate` - Charging PWM (0-255, lower = more current)
+- `set/delay` - `on` (hold charging) | `off`
+- `set/solar_tracking` - `on` | `off`
+- `set/debug`, `set/debug_flags`, `get/debug` - Debug output control
 
-**Control Topics:**
-- `set_pwm` - Subscribe: Set charging speed (publish value 0-255)
+Solar production and house consumption are read from the topics set in
+`MQTT_SOLAR_PRODUCTION_POWER` / `MQTT_HOUSE_CONSUMPTION_POWER`.
 
-**Debug Topics:**
-- `debug/init` - Initialization messages
-- `debug/read` - Sensor read status
-- `debug/comm` - PZEM communication status
+### 4. Charging Modes
+
+- **boost** - Charge at 16A as soon as the car is ready.
+- **cheap** - Charge at 16A only while `set/cheap` is `on`.
+- **solar** - Closed-loop tracking of solar production (see `SOLAR_*` in `include/params.h`):
+  - the PWM ramps up slowly on surplus and backs off fast on deficit, between 8A and `SOLAR_PWM_MIN`;
+  - when the charger is already at minimum current and still in deficit (or solar data is stale) for `SOLAR_PAUSE_AFTER_MS`, charging is **paused** (J1772 stop sequence), but never less than `SOLAR_MIN_ON_MS` after charging started;
+  - a pause lasts at least `SOLAR_MIN_PAUSE_MS`, and charging **resumes** only after production has stayed above `SOLAR_RESUME_W` for `SOLAR_RESUME_AFTER_MS`. It restarts at minimum current and ramps up;
+  - unplugging the car or selecting a mode clears the pause.
+
+### 5. Safety Behaviour
+
+- The EVSE state machine keeps running without WiFi or MQTT: reconnection is non-blocking.
+- A task watchdog (`WDT_TIMEOUT_S`) reboots the board if the main loop hangs. At boot the relay is open and the CP is at +12V.
+- CP below the state C threshold (state D/E, e.g. CP shorted): with `FAULT_DETECT_ENFORCE 0` (default) it is only reported as a `cp_fault_seen` event on `state/change`. With `1` the charger goes to fault (relay open, `FLT_CTRL` high) and may clear after `FAULT_RETRY_MS` once the CP reads normal again.
 
 ---
 
@@ -160,7 +174,7 @@ src/
 1. Verify wiring: ESP32 pins 1→PZEM TX, 3→PZEM RX
 2. Check PZEM is powered from separate 5V supply
 3. Monitor debug topics: `zozo-charge/debug/comm`
-4. Verify PZEM address (default: 0x01)
+4. Verify PZEM address (default: 0x04)
 
 ### ESP32 Won't Boot When PZEM Connected
 - Ensure 10kΩ pull-up resistor on GPIO2 if used
