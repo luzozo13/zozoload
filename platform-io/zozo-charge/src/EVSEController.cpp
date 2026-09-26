@@ -43,6 +43,11 @@ int EVSEController::readPilot() {
   } else if (i_cpp_max >= TH_CD) {
     i_state_meas = STATE_C;
   }
+#if FAULT_DETECT_ENFORCE
+  else {
+    i_state_meas = STATE_FAULT;       // State D/E: CP shorted or pulled below ~6V
+  }
+#endif
   return i_state_meas;
 }
 
@@ -62,6 +67,7 @@ void EVSEController::setChargeSpeed(int speed) {
 
 void EVSEController::setEvseMode(EvseMode mode) {
   m_active_mode = mode;
+  setSolarPaused(false);   // Any mode (re)selection cancels a solar pause
 
   switch (m_active_mode) {
     case MODE_BOOST:
@@ -90,9 +96,23 @@ void EVSEController::setSolarWatts(float watts) {
 
 void EVSEController::setChargingEnabled(bool enabled) {
   if (enabled == b_charging_enabled) return;
+  bool was_allowed = isChargeAllowed();
   b_charging_enabled = enabled;
+  applyChargingGate(was_allowed);
+}
 
-  if (!enabled) {
+void EVSEController::setSolarPaused(bool paused) {
+  if (paused == b_solar_paused) return;
+  bool was_allowed = isChargeAllowed();
+  b_solar_paused = paused;
+  applyChargingGate(was_allowed);
+}
+
+void EVSEController::applyChargingGate(bool was_allowed) {
+  bool allowed = isChargeAllowed();
+  if (allowed == was_allowed) return;
+
+  if (!allowed) {
     if (i_state_current == STATE_C) {
       enterSleep();
     } else if (i_state_current == STATE_B) {
@@ -140,22 +160,47 @@ void EVSEController::setStateFault(){
   i_state_current = STATE_FAULT;
   digitalWrite(REL_CTRL, LOW);
   digitalWrite(FLT_CTRL, HIGH);
+  ledcWrite(CH_CP_CTRL, CP_12P);    // Steady +12V: no charge offer, CP stays readable
+  ul_fault_start_ms = millis();
+}
+
+// Report-only detection (FAULT_DETECT_ENFORCE == 0): publish once per episode when
+// the CP stays below TH_CD for the standard debounce time. No state change.
+void EVSEController::checkCpFault() {
+#if !FAULT_DETECT_ENFORCE
+  if (i_cpp_max >= TH_CD) {
+    b_cp_low = false;
+    return;
+  }
+  unsigned long now = millis();
+  if (!b_cp_low) {
+    b_cp_low = true;
+    b_cp_low_reported = false;
+    ul_cp_low_start_ms = now;
+  } else if (!b_cp_low_reported && now - ul_cp_low_start_ms >= DELAY_STATE_TRANSITION) {
+    b_cp_low_reported = true;
+    if (m_mqttHandler) m_mqttHandler->publishEvent("cp_fault_seen", i_cpp_max, i_cpp_min);
+  }
+#endif
 }
 
 void EVSEController::setState() {
   switch (i_state_meas) {
     case STATE_A:
+      digitalWrite(FLT_CTRL, LOW);
       chargingOff();
       ledcWrite(CH_CP_CTRL, CP_12P);
       i_state_current = STATE_A;
       break;
     case STATE_B:
+      digitalWrite(FLT_CTRL, LOW);
       chargingOff();
-      ledcWrite(CH_CP_CTRL, b_charging_enabled ? i_charge_speed : CP_12P);
+      ledcWrite(CH_CP_CTRL, isChargeAllowed() ? i_charge_speed : CP_12P);
       i_state_current = STATE_B;
       break;
     case STATE_C:
-      if (b_charging_enabled) {
+      digitalWrite(FLT_CTRL, LOW);
+      if (isChargeAllowed()) {
         ledcWrite(CH_CP_CTRL, i_charge_speed);
         chargingOn();
       } else {
@@ -226,27 +271,21 @@ void EVSEController::update() {
 
   updateChargeSpeed();
   readPilot();
+  checkCpFault();
 
-  if (isStateDiff()) {
+  // Stay in fault at least FAULT_RETRY_MS before a normal reading may clear it
+  bool fault_hold = (i_state_current == STATE_FAULT) &&
+                    (millis() - ul_fault_start_ms < FAULT_RETRY_MS);
+
+  if (!fault_hold && isStateDiff()) {
     if (isFirstStateDiff()) {
       startDiffTimer();
     }
     else {
       if (isDiffSteady()) {
-        // Store previous state as a character
-        char c_prev_state = 'U';
-        if (i_state_current == STATE_A) c_prev_state = 'A';
-        else if (i_state_current == STATE_B) c_prev_state = 'B';
-        else if (i_state_current == STATE_C) c_prev_state = 'C';
-        else c_prev_state = 'U';
-
+        char c_prev_state = stateChar(i_state_current);
         setState();
-
-        char c_new_state = 'U';
-        if (i_state_current == STATE_A) c_new_state = 'A';
-        else if (i_state_current == STATE_B) c_new_state = 'B';
-        else if (i_state_current == STATE_C) c_new_state = 'C';
-        else c_new_state = 'U';
+        char c_new_state = stateChar(i_state_current);
 
         // Publish the transition (e.g. "B->C")
         if (m_mqttHandler) {
@@ -281,36 +320,81 @@ void EVSEController::update() {
 void EVSEController::publishState() {
   if (!m_mqttHandler) return;  // No MQTT handler available
   
-  // Convert state to character
-  const char* sz_state_char = "Unknown";
-  if (i_state_current == STATE_A)            sz_state_char = "A";
-  else if (i_state_current == STATE_B)       sz_state_char = "B";
-  else if (i_state_current == STATE_C)       sz_state_char = "C";
-  else if (i_state_current == STATE_SLEEPING) sz_state_char = "S";
-
-  // Use MqttHandler utility method
-  m_mqttHandler->publishState(sz_state_char, i_cpp_max, i_cpp_min, b_charging_enabled);
+  char sz_state[2] = { stateChar(i_state_current), '\0' };
+  m_mqttHandler->publishState(sz_state, i_cpp_max, i_cpp_min, b_charging_enabled);
 }
 
 //-- Solar Tracking Control Loop --//
 
 void EVSEController::applySolarTracking() {
-  if (!b_solar_tracking) return;
+  if (!b_solar_tracking) {
+    setSolarPaused(false);
+    return;
+  }
 
   int state = i_state_current;
-  bool charging_effective = (state == STATE_C) && b_charging_enabled;
+  unsigned long now = millis();
+  bool solar_fresh = b_solar_rx_seen && (now - ul_solar_rx_ms <= SOLAR_STALE_MS);
+
+  // Car unplugged: a new session starts fresh (no pause, normal 16A pre-charge)
+  if (state == STATE_A) {
+    setSolarPaused(false);
+    b_solar_soft_start = false;
+  }
+
+  // Paused: wait for the minimum pause time AND a steady surplus before resuming
+  if (b_solar_paused) {
+    b_solar_was_charging = false;
+    if (now - ul_solar_last_step_ms < SOLAR_LOOP_MS) return;
+    ul_solar_last_step_ms = now;
+
+    if (solar_fresh && f_solar_watts >= SOLAR_RESUME_W) {
+      if (!b_solar_resume_timing) {
+        b_solar_resume_timing = true;
+        ul_solar_resume_start_ms = now;
+      }
+    } else {
+      b_solar_resume_timing = false;   // Any dip restarts the resume timer
+    }
+
+    bool min_pause_done = (now - ul_solar_pause_start_ms) >= SOLAR_MIN_PAUSE_MS;
+    bool surplus_steady = b_solar_resume_timing &&
+                          (now - ul_solar_resume_start_ms) >= SOLAR_RESUME_AFTER_MS;
+    const char* action = "paused";
+    if (min_pause_done && surplus_steady) {
+      b_solar_soft_start = true;       // Restart at min current, then ramp up
+      setChargeSpeed(SOLAR_PWM_MAX);
+      setSolarPaused(false);
+      if (m_mqttHandler) m_mqttHandler->publishPwm();
+      action = "resume";
+    }
+    publishSolarTelemetry(action, 0.0f, f_solar_watts, i_charge_speed, i_charge_speed);
+    return;
+  }
+
+  bool charging_effective = (state == STATE_C) && isChargeAllowed();
 
   // Do not adapt solar tracking setpoint unless charging is effectively active.
-  // Before charging starts, keep a deterministic pre-charge setpoint at 16A.
+  // Before charging starts, keep a deterministic pre-charge setpoint: 16A, or
+  // min current right after a solar resume.
   if (!charging_effective) {
-    if (i_charge_speed != CP_AMP_16) {
-      setChargeSpeed(CP_AMP_16);
+    b_solar_was_charging = false;
+    int pre_charge = b_solar_soft_start ? SOLAR_PWM_MAX : CP_AMP_16;
+    if (i_charge_speed != pre_charge) {
+      setChargeSpeed(pre_charge);
       if (m_mqttHandler) m_mqttHandler->publishPwm();
     }
     return;
   }
 
-  unsigned long now = millis();
+  if (!b_solar_was_charging) {
+    // Charging just (re)started: arm the minimum on-time
+    b_solar_was_charging = true;
+    b_solar_soft_start = false;
+    b_solar_deficit_timing = false;
+    ul_solar_charge_start_ms = now;
+  }
+
   if (now - ul_solar_last_step_ms < SOLAR_LOOP_MS) return;
   ul_solar_last_step_ms = now;
 
@@ -319,9 +403,8 @@ void EVSEController::applySolarTracking() {
   int pwm_current = i_charge_speed;
   int pwm_next = pwm_current;
   const char* action = "hold";
-  long solar_age_s = b_solar_rx_seen ? (long)((now - ul_solar_rx_ms) / 1000UL) : -1;
 
-  if (!b_solar_rx_seen || now - ul_solar_rx_ms > SOLAR_STALE_MS) {
+  if (!solar_fresh) {
     pwm_next = SOLAR_PWM_MAX;
     action = "stale";
   } else if (diff > SOLAR_DEADBAND_W) {
@@ -340,16 +423,48 @@ void EVSEController::applySolarTracking() {
     if (m_mqttHandler) m_mqttHandler->publishPwm();
   }
 
-  // Publish debug telemetry every cycle
-  if (m_mqttHandler && m_mqttHandler->isConnected()) {
-    char ts[24];
-    m_mqttHandler->getTimestamp(ts, sizeof(ts));
-    char sz_msg[192];
-    snprintf(sz_msg, sizeof(sz_msg),
-      "{\"ts\":\"%s\",\"solar_w\":%.1f,\"solar_age_s\":%ld,\"evse_w\":%.1f,\"diff_w\":%.1f,\"pwm\":%d,\"pwm_next\":%d,\"action\":\"%s\"}",
-      ts, f_solar_watts, solar_age_s, evse_power, diff, pwm_current, pwm_next, action);
-    m_mqttHandler->publishSolarTracking(sz_msg);
+  // Deficit at minimum current (or no solar data): time it, pause when it lasts
+  bool deficit_at_min = (pwm_current >= SOLAR_PWM_MAX) && (!solar_fresh || diff < -SOLAR_DEADBAND_W);
+  if (deficit_at_min) {
+    if (!b_solar_deficit_timing) {
+      b_solar_deficit_timing = true;
+      ul_solar_deficit_start_ms = now;
+    }
+  } else {
+    b_solar_deficit_timing = false;
   }
+
+  if (b_solar_deficit_timing &&
+      (now - ul_solar_deficit_start_ms) >= SOLAR_PAUSE_AFTER_MS &&
+      (now - ul_solar_charge_start_ms) >= SOLAR_MIN_ON_MS) {
+    b_solar_deficit_timing = false;
+    b_solar_resume_timing = false;
+    ul_solar_pause_start_ms = now;
+    setSolarPaused(true);            // J1772 stop via enterSleep()
+    if (m_mqttHandler) m_mqttHandler->publishPwm();
+    action = "pause";
+  }
+
+  publishSolarTelemetry(action, evse_power, diff, pwm_current, pwm_next);
+}
+
+void EVSEController::publishSolarTelemetry(const char* action, float evse_power, float diff,
+                                           int pwm_current, int pwm_next) {
+  if (!m_mqttHandler || !m_mqttHandler->isConnected()) return;
+  unsigned long now = millis();
+  long solar_age_s = b_solar_rx_seen ? (long)((now - ul_solar_rx_ms) / 1000UL) : -1;
+  long deficit_s = b_solar_deficit_timing ? (long)((now - ul_solar_deficit_start_ms) / 1000UL) : -1;
+  long paused_s  = b_solar_paused ? (long)((now - ul_solar_pause_start_ms) / 1000UL) : -1;
+  long resume_s  = (b_solar_paused && b_solar_resume_timing)
+                   ? (long)((now - ul_solar_resume_start_ms) / 1000UL) : -1;
+  char ts[24];
+  m_mqttHandler->getTimestamp(ts, sizeof(ts));
+  char sz_msg[300];
+  snprintf(sz_msg, sizeof(sz_msg),
+    "{\"ts\":\"%s\",\"solar_w\":%.1f,\"solar_age_s\":%ld,\"evse_w\":%.1f,\"diff_w\":%.1f,\"pwm\":%d,\"pwm_next\":%d,\"action\":\"%s\",\"deficit_s\":%ld,\"paused_s\":%ld,\"resume_s\":%ld}",
+    ts, f_solar_watts, solar_age_s, evse_power, diff, pwm_current, pwm_next, action,
+    deficit_s, paused_s, resume_s);
+  m_mqttHandler->publishSolarTracking(sz_msg);
 }
 
 //-- Hardware setup (moved from main.cpp) --//

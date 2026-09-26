@@ -4,6 +4,7 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
+#include <esp_task_wdt.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -46,14 +47,36 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
 void readAndPublishPZEM();
 
+static bool s_ota_started = false;
+
+// ArduinoOTA needs a network interface: start it once WiFi is up (setup or later)
+static void startOtaIfReady() {
+  if (s_ota_started || WiFi.status() != WL_CONNECTED) return;
+  ArduinoOTA.setHostname(g_mqttHandler.getHostname());
+  // An OTA upload runs inside ArduinoOTA.handle() for many seconds: feed the watchdog
+  ArduinoOTA.onProgress([](unsigned int, unsigned int) { esp_task_wdt_reset(); });
+  ArduinoOTA.begin();
+  s_ota_started = true;
+}
+
 //-- WiFi Connection Management --//
 
 void setup() {
-  g_EvseController.setupHardware();
+  g_EvseController.setupHardware();   // Relay open, CP +12V before anything else
 
+  // Task watchdog on the loop task: a hang reboots, and setupHardware() then
+  // leaves the charger in its safe state.
+  esp_task_wdt_init(WDT_TIMEOUT_S, true);
+  esp_task_wdt_add(NULL);
+
+  // Wait for WiFi, but not forever: the EVSE must run even with no network.
+  // WiFi keeps retrying in the background after the timeout.
+  WiFi.setAutoReconnect(true);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
+  unsigned long wifi_start = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - wifi_start < WIFI_CONNECT_TIMEOUT_MS) {
     delay(500);
+    esp_task_wdt_reset();
   }
 
   configTime(0, 0, "pool.ntp.org", "time.nist.gov");
@@ -68,24 +91,32 @@ void setup() {
   pubsubClient.setCallback(mqttCallback);
 
   reconnect();
+  esp_task_wdt_reset();
   initPZEM();
 
-  ArduinoOTA.setHostname(g_mqttHandler.getHostname());
-  ArduinoOTA.begin();
+  startOtaIfReady();
 }
 
+// Non-blocking: at most one MQTT connection attempt every MQTT_RECONNECT_INTERVAL.
+// The EVSE state machine keeps running while the broker or WiFi is down.
 void reconnect() {
-  while (!g_mqttHandler.isConnected()) {
-    if (g_mqttHandler.reconnect()) {
-      g_mqttHandler.publishComm();
-    } else {
-      delay(5000);
-    }
+  static unsigned long last_attempt = 0;
+  static bool attempted = false;
+  if (g_mqttHandler.isConnected() || WiFi.status() != WL_CONNECTED) return;
+  unsigned long now = millis();
+  if (attempted && now - last_attempt < MQTT_RECONNECT_INTERVAL) return;
+  attempted = true;
+  last_attempt = now;
+  if (g_mqttHandler.reconnect()) {
+    g_mqttHandler.publishComm();
   }
 }
 
 void loop() {
-  ArduinoOTA.handle();
+  esp_task_wdt_reset();
+
+  startOtaIfReady();
+  if (s_ota_started) ArduinoOTA.handle();
 
   if (!g_mqttHandler.isConnected()) {
     reconnect();
