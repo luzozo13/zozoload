@@ -403,8 +403,12 @@ void MqttHandler::applySolarTracking() {
     int pwm_current = m_evseController->getChargeSpeed();
     int pwm_next = pwm_current;
     const char* action = "hold";
+    long solar_age_s = m_solar_rx_seen ? (long)((now - m_solar_rx_ms) / 1000UL) : -1;
 
-    if (diff > SOLAR_DEADBAND_W) {
+    if (!m_solar_rx_seen || now - m_solar_rx_ms > SOLAR_STALE_MS) {
+        pwm_next = SOLAR_PWM_MAX;      // no fresh solar data: fall back to minimum current
+        action = "stale";
+    } else if (diff > SOLAR_DEADBAND_W) {
         pwm_next -= SOLAR_STEP_DOWN;   // surplus: ramp up current (lower PWM)
         action = "down";
     } else if (diff < -SOLAR_DEADBAND_W) {
@@ -423,10 +427,10 @@ void MqttHandler::applySolarTracking() {
     if (isConnected()) {
         char ts[24];
         getTimestamp(ts, sizeof(ts));
-        char sz_msg[160];
+        char sz_msg[192];
         snprintf(sz_msg, sizeof(sz_msg),
-            "{\"ts\":\"%s\",\"solar_w\":%.1f,\"evse_w\":%.1f,\"diff_w\":%.1f,\"pwm\":%d,\"pwm_next\":%d,\"action\":\"%s\"}",
-            ts, m_solar_watts, evse_power, diff, pwm_current, pwm_next, action);
+            "{\"ts\":\"%s\",\"solar_w\":%.1f,\"solar_age_s\":%ld,\"evse_w\":%.1f,\"diff_w\":%.1f,\"pwm\":%d,\"pwm_next\":%d,\"action\":\"%s\"}",
+            ts, m_solar_watts, solar_age_s, evse_power, diff, pwm_current, pwm_next, action);
         publish(MQTT_STATE_SOLAR_TRACKING, sz_msg);
     }
 }
@@ -498,6 +502,8 @@ void MqttHandler::handleMessage(char* topic, uint8_t* payload, unsigned int leng
 
     if (strcmp(topic, MQTT_SOLAR_PRODUCTION_WATTS) == 0) {
         m_solar_watts = atof((char*)payload);
+        m_solar_rx_ms = millis();
+        m_solar_rx_seen = true;
     }
 
     if (strcmp(topic, MQTT_HOUSE_CONSUMPTION_WATTS) == 0) {

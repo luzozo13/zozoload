@@ -42,7 +42,20 @@ struct PzemCache {
     float frequency = NAN;
     float pf        = NAN;
     bool  valid     = false;
+    bool  stale     = false;  // same reading for too long: sensor/UART stuck
 } pzemCache;
+
+// ── Stale-reading watchdog ────────────────────────────────────────────────────
+// A live PZEM never returns the exact same V/I/W/kWh/Hz/PF tuple for minutes:
+// voltage alone moves in 0.1 V steps. If it does, the read path is stuck
+// (seen for 27 h with PZEM lib 1.1.x after millis() overflow). First re-init
+// the PZEM; if still frozen after another window, restart the ESP.
+#ifndef PZEM_STALE_MS
+  #define PZEM_STALE_MS         (5UL * 60UL * 1000UL)   // frozen this long ...
+#endif
+#ifndef PZEM_STALE_MIN_READS
+  #define PZEM_STALE_MIN_READS  5                       // ... over at least this many reads
+#endif
 
 // ── Globals ───────────────────────────────────────────────────────────────────
 WiFiClient   wifiClient;
@@ -50,6 +63,10 @@ PubSubClient mqttClient(wifiClient);
 PZEM004Tv30  pzem((Stream&)Serial, 0xF8);  // placeholder; properly init'd in setup()
 
 bool          pzemOk          = false;
+PzemCache     pzemPrev;                 // previous reading, for the stale check
+uint16_t      pzemSameCount   = 0;      // consecutive reads identical to pzemPrev
+unsigned long pzemLastChange  = 0;      // millis() of the last reading that differed
+bool          pzemReinitDone  = false;  // re-init already tried for this stall
 unsigned long lastAcquisition = 0;
 unsigned long lastTimePublish = 0;
 unsigned long eepromWriteTime = 0;
@@ -117,6 +134,41 @@ void scheduleEEPROMWrite() {
 }
 
 // ── PZEM ─────────────────────────────────────────────────────────────────────
+bool sameReading(const PzemCache& a, const PzemCache& b) {
+    return a.voltage == b.voltage && a.current   == b.current   && a.power == b.power
+        && a.energy  == b.energy  && a.frequency == b.frequency && a.pf    == b.pf;
+}
+
+// Count identical consecutive readings; re-init the PZEM, then restart, if frozen.
+void checkPzemStale() {
+    unsigned long now = millis();
+    if (!pzemCache.valid || !sameReading(pzemCache, pzemPrev)) {
+        pzemPrev        = pzemCache;
+        pzemSameCount   = 0;
+        pzemLastChange  = now;
+        pzemReinitDone  = false;
+        pzemCache.stale = false;
+        return;
+    }
+    if (pzemSameCount < 0xFFFF) pzemSameCount++;
+    if (pzemSameCount < PZEM_STALE_MIN_READS || now - pzemLastChange < PZEM_STALE_MS) return;
+
+    pzemCache.stale = true;
+    if (!pzemReinitDone) {
+        if (mqttClient.connected())
+            mqttClient.publish(ht(TOPIC_OTA_STATUS).c_str(), "pzem stale: re-initialising sensor");
+        pzem = PZEM004Tv30(Serial);
+        pzemReinitDone = true;
+        pzemSameCount  = 0;
+        pzemLastChange = now;   // give the re-init a full window
+    } else {
+        if (mqttClient.connected())
+            mqttClient.publish(ht(TOPIC_OTA_STATUS).c_str(), "pzem still stale after re-init: restarting");
+        delay(300);
+        ESP.restart();
+    }
+}
+
 void acquirePZEM() {
     pzemCache.voltage   = pzem.voltage();
     pzemCache.current   = pzem.current();
@@ -125,7 +177,8 @@ void acquirePZEM() {
     pzemCache.frequency = pzem.frequency();
     pzemCache.pf        = pzem.pf();
     pzemCache.valid     = !isnan(pzemCache.voltage);
-    pzemOk              = pzemCache.valid;
+    checkPzemStale();
+    pzemOk              = pzemCache.valid && !pzemCache.stale;
 }
 
 // ── Publishers ────────────────────────────────────────────────────────────────
@@ -134,7 +187,11 @@ void publishStatePzem() {
     if (!settings.debugEnabled) return;
     char ts[24]; getTimestamp(ts, sizeof(ts));
     char buf[200];
-    if (pzemCache.valid) {
+    if (pzemCache.valid && pzemCache.stale) {
+        snprintf(buf, sizeof(buf),
+            "{\"ts\":\"%s\",\"device\":\"%s\",\"error\":\"pzem_stale\",\"kWh\":%.3f}",
+            ts, settings.hostname, pzemCache.energy);
+    } else if (pzemCache.valid) {
         snprintf(buf, sizeof(buf),
             "{\"ts\":\"%s\",\"device\":\"%s\",\"V\":%.1f,\"I\":%.3f,\"W\":%.1f,\"kWh\":%.3f,\"Hz\":%.1f,\"PF\":%.2f}",
             ts, settings.hostname,
@@ -172,7 +229,7 @@ void publishStateTime() {
 }
 
 void publishPower() {
-    if (!mqttClient.connected() || !pzemCache.valid) return;
+    if (!mqttClient.connected() || !pzemCache.valid || pzemCache.stale) return;   // never republish a frozen value
     char buf[16];
     snprintf(buf, sizeof(buf), "%.1f", pzemCache.power);
     mqttClient.publish(TOPIC_PUBLISH_POWER, buf, true);   // retained — absolute topic, no hostname prefix

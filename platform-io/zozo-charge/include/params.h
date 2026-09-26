@@ -74,6 +74,11 @@ class PZEM004Tv30; // PZEM type forward declaration
 #define SOLAR_STEP_DOWN   5     // PWM decrement step (more current) on surplus
 #define SOLAR_STEP_UP     10    // PWM increment step (less current) on deficit
 #define SOLAR_LOOP_MS     10000 // Control loop period (ms)
+// Solar input freshness: the solar meter publishes every 30 s and stops when its
+// reading is frozen. With no solar message for this long, the loop stops trusting
+// the last value and falls back to minimum current (SOLAR_PWM_MAX) until data
+// comes back, instead of charging from the grid on a stale surplus.
+#define SOLAR_STALE_MS    180000
 
 //-- Unified config NVS defaults --//
 #define NVS_DEFAULT_HOSTNAME      "zozo-charge"

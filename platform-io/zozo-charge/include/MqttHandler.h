@@ -37,6 +37,8 @@ private:
     //-- Solar tracking --//
     bool m_solar_tracking = true;           // Default ON: active immediately on boot
     unsigned long m_solar_last_step_ms = 0; // Timestamp of last control step
+    unsigned long m_solar_rx_ms = 0;        // millis() of the last solar power message
+    bool m_solar_rx_seen = false;           // any solar power message received since boot
 
     void getTimestamp(char* buf, size_t len);
     void publishDebugStatus();
