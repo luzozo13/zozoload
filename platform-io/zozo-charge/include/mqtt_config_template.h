@@ -1,7 +1,10 @@
 #pragma once
 
-//-- External System Topics (Solar/House) - Customize per installation --//
-#define MQTT_SOLAR_PRODUCTION_POWER "<SOLAR_PRODUCTION_POWER_TOPIC>"
+//-- External System Topics - Customize per installation --//
+// Solar mode follows the energy planner's setpoint: the power available for the
+// car (solar - other loads - offset - fictive loads), plain watts. It replaces
+// the solar production topic (MQTT_SOLAR_PRODUCTION_POWER, no longer used).
+#define MQTT_EVSE_SETPOINT "energy_planner/evse/setpoint"
 #define MQTT_HOUSE_CONSUMPTION_POWER "<HOUSE_CONSUMPTION_POWER_TOPIC>"
 
 //-- MQTT Broker Configuration --//

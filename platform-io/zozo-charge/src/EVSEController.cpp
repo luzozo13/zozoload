@@ -88,10 +88,10 @@ void EVSEController::setEvseMode(EvseMode mode) {
   }
 }
 
-void EVSEController::setSolarWatts(float watts) {
-  f_solar_watts = watts;
-  ul_solar_rx_ms = millis();
-  b_solar_rx_seen = true;
+void EVSEController::setSetpointWatts(float watts) {
+  f_setpoint_watts = watts;
+  ul_setpoint_rx_ms = millis();
+  b_setpoint_rx_seen = true;
 }
 
 void EVSEController::setChargingEnabled(bool enabled) {
@@ -334,7 +334,7 @@ void EVSEController::applySolarTracking() {
 
   int state = i_state_current;
   unsigned long now = millis();
-  bool solar_fresh = b_solar_rx_seen && (now - ul_solar_rx_ms <= SOLAR_STALE_MS);
+  bool setpoint_fresh = b_setpoint_rx_seen && (now - ul_setpoint_rx_ms <= SOLAR_STALE_MS);
 
   // Car unplugged: a new session starts fresh (no pause, normal 16A pre-charge)
   if (state == STATE_A) {
@@ -348,7 +348,7 @@ void EVSEController::applySolarTracking() {
     if (now - ul_solar_last_step_ms < SOLAR_LOOP_MS) return;
     ul_solar_last_step_ms = now;
 
-    if (solar_fresh && f_solar_watts >= SOLAR_RESUME_W) {
+    if (setpoint_fresh && f_setpoint_watts >= SOLAR_RESUME_W) {
       if (!b_solar_resume_timing) {
         b_solar_resume_timing = true;
         ul_solar_resume_start_ms = now;
@@ -368,7 +368,7 @@ void EVSEController::applySolarTracking() {
       if (m_mqttHandler) m_mqttHandler->publishPwm();
       action = "resume";
     }
-    publishSolarTelemetry(action, 0.0f, f_solar_watts, i_charge_speed, i_charge_speed);
+    publishSolarTelemetry(action, 0.0f, f_setpoint_watts, i_charge_speed, i_charge_speed);
     return;
   }
 
@@ -399,12 +399,12 @@ void EVSEController::applySolarTracking() {
   ul_solar_last_step_ms = now;
 
   float evse_power = f_power;
-  float diff = f_solar_watts - evse_power;
+  float diff = f_setpoint_watts - evse_power;
   int pwm_current = i_charge_speed;
   int pwm_next = pwm_current;
   const char* action = "hold";
 
-  if (!solar_fresh) {
+  if (!setpoint_fresh) {
     pwm_next = SOLAR_PWM_MAX;
     action = "stale";
   } else if (diff > SOLAR_DEADBAND_W) {
@@ -423,8 +423,8 @@ void EVSEController::applySolarTracking() {
     if (m_mqttHandler) m_mqttHandler->publishPwm();
   }
 
-  // Deficit at minimum current (or no solar data): time it, pause when it lasts
-  bool deficit_at_min = (pwm_current >= SOLAR_PWM_MAX) && (!solar_fresh || diff < -SOLAR_DEADBAND_W);
+  // Deficit at minimum current (or no fresh setpoint): time it, pause when it lasts
+  bool deficit_at_min = (pwm_current >= SOLAR_PWM_MAX) && (!setpoint_fresh || diff < -SOLAR_DEADBAND_W);
   if (deficit_at_min) {
     if (!b_solar_deficit_timing) {
       b_solar_deficit_timing = true;
@@ -452,7 +452,7 @@ void EVSEController::publishSolarTelemetry(const char* action, float evse_power,
                                            int pwm_current, int pwm_next) {
   if (!m_mqttHandler || !m_mqttHandler->isConnected()) return;
   unsigned long now = millis();
-  long solar_age_s = b_solar_rx_seen ? (long)((now - ul_solar_rx_ms) / 1000UL) : -1;
+  long setpoint_age_s = b_setpoint_rx_seen ? (long)((now - ul_setpoint_rx_ms) / 1000UL) : -1;
   long deficit_s = b_solar_deficit_timing ? (long)((now - ul_solar_deficit_start_ms) / 1000UL) : -1;
   long paused_s  = b_solar_paused ? (long)((now - ul_solar_pause_start_ms) / 1000UL) : -1;
   long resume_s  = (b_solar_paused && b_solar_resume_timing)
@@ -461,8 +461,8 @@ void EVSEController::publishSolarTelemetry(const char* action, float evse_power,
   m_mqttHandler->getTimestamp(ts, sizeof(ts));
   char sz_msg[300];
   snprintf(sz_msg, sizeof(sz_msg),
-    "{\"ts\":\"%s\",\"solar_w\":%.1f,\"solar_age_s\":%ld,\"evse_w\":%.1f,\"diff_w\":%.1f,\"pwm\":%d,\"pwm_next\":%d,\"action\":\"%s\",\"deficit_s\":%ld,\"paused_s\":%ld,\"resume_s\":%ld}",
-    ts, f_solar_watts, solar_age_s, evse_power, diff, pwm_current, pwm_next, action,
+    "{\"ts\":\"%s\",\"setpoint_w\":%.1f,\"setpoint_age_s\":%ld,\"evse_w\":%.1f,\"diff_w\":%.1f,\"pwm\":%d,\"pwm_next\":%d,\"action\":\"%s\",\"deficit_s\":%ld,\"paused_s\":%ld,\"resume_s\":%ld}",
+    ts, f_setpoint_watts, setpoint_age_s, evse_power, diff, pwm_current, pwm_next, action,
     deficit_s, paused_s, resume_s);
   m_mqttHandler->publishSolarTracking(sz_msg);
 }

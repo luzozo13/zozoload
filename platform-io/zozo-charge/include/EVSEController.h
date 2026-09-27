@@ -77,9 +77,10 @@ private:
   // Solar tracking state
   bool b_solar_tracking = true;
   unsigned long ul_solar_last_step_ms = 0;
-  unsigned long ul_solar_rx_ms = 0;
-  bool b_solar_rx_seen = false;
-  float f_solar_watts = 0.0f;
+  // Power available for the car, from the energy planner (solar - other loads)
+  unsigned long ul_setpoint_rx_ms = 0;
+  bool b_setpoint_rx_seen = false;
+  float f_setpoint_watts = 0.0f;
 
   // Solar pause/resume (anti-flicker)
   bool b_solar_paused = false;
@@ -187,7 +188,7 @@ public:
 
   // Solar tracking control
   void setSolarTracking(bool enabled) { b_solar_tracking = enabled; }
-  void setSolarWatts(float watts);
+  void setSetpointWatts(float watts);
   bool isSolarTracking() const { return b_solar_tracking; }
-  float getSolarWatts() const { return f_solar_watts; }
+  float getSetpointWatts() const { return f_setpoint_watts; }
 };
