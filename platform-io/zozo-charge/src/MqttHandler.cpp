@@ -5,6 +5,11 @@
 #include "params.h"
 #include "mqtt_config.h"
 #include "wifi_credentials.h"
+
+// Older mqtt_config.h files predate the energy planner setpoint: default topic
+#ifndef MQTT_EVSE_SETPOINT
+#define MQTT_EVSE_SETPOINT "energy_planner/evse/setpoint"
+#endif
 #include <Arduino.h>
 #include <WiFi.h>
 #include <stdio.h>
@@ -100,7 +105,7 @@ bool MqttHandler::reconnect() {
         subscribe(MQTT_SET_DEBUG_FLAGS);
         subscribe(MQTT_GET_DEBUG);
         subscribe(MQTT_SET_SOLAR_TRACKING);
-        subscribe(MQTT_SOLAR_PRODUCTION_POWER);
+        subscribe(MQTT_EVSE_SETPOINT);
         subscribe(MQTT_HOUSE_CONSUMPTION_POWER);
         subscribe(MQTT_SET_MODE);
         subscribe(MQTT_SET_CHEAP);
@@ -162,9 +167,9 @@ void MqttHandler::publishSolarTracking(const char* message) {
     publish(MQTT_STATE_SOLAR_TRACKING, message);
 }
 
-void MqttHandler::setSolarWatts(float watts) {
-    m_solar_watts = watts;
-    if (m_evseController) m_evseController->setSolarWatts(watts);
+void MqttHandler::setSetpointWatts(float watts) {
+    m_setpoint_watts = watts;
+    if (m_evseController) m_evseController->setSetpointWatts(watts);
 }
 
 void MqttHandler::setSolarTracking(bool enabled) {
@@ -482,9 +487,9 @@ void MqttHandler::handleMessage(char* topic, uint8_t* raw, unsigned int length) 
         publish(MQTT_SET_SOLAR_TRACKING_STATUS, sz_conf);
     }
 
-    if (strcmp(topic, MQTT_SOLAR_PRODUCTION_POWER) == 0) {
+    if (strcmp(topic, MQTT_EVSE_SETPOINT) == 0) {
         float watts = atof((char*)payload);
-        setSolarWatts(watts);
+        setSetpointWatts(watts);
     }
 
     if (strcmp(topic, MQTT_HOUSE_CONSUMPTION_POWER) == 0) {

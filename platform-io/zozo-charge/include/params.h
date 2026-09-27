@@ -72,29 +72,30 @@ class PZEM004Tv30; // PZEM type forward declaration
 #define DBG_DEFAULT_FLAGS   0x1F  // All 5 flags on by default
 
 //-- Solar Tracking Mode --//
-// Closed-loop control: every SOLAR_LOOP_MS, compare solar production vs EVSE
+// Closed-loop control: every SOLAR_LOOP_MS, compare the energy planner's setpoint
+// (MQTT_EVSE_SETPOINT: solar production minus the other loads) vs EVSE
 // consumption (PZEM). Surplus -> decrement PWM (more current, slow ramp-up);
 // deficit -> increment PWM (less current, fast back-off). PWM clamped to
 // [SOLAR_PWM_MIN, SOLAR_PWM_MAX]. Deadband prevents flapping near zero diff.
 #define SOLAR_PWM_MIN     110   // Max charging current (lowest PWM duty)
 #define SOLAR_PWM_MAX     221   // Min charging current = 8A (CP_AMP_8)
-#define SOLAR_DEADBAND_W  500   // No change when |solar - evse_power| <= this
+#define SOLAR_DEADBAND_W  500   // No change when |setpoint - evse_power| <= this
 #define SOLAR_STEP_DOWN   5     // PWM decrement step (more current) on surplus
 #define SOLAR_STEP_UP     10    // PWM increment step (less current) on deficit
 #define SOLAR_LOOP_MS     10000 // Control loop period (ms)
-// Solar input freshness: the solar meter publishes every 30 s and stops when its
-// reading is frozen. With no solar message for this long, the loop stops trusting
+// Setpoint freshness: the energy planner publishes at least every 30 s, and stops
+// when the solar meter is silent. With no setpoint message for this long, the loop stops trusting
 // the last value and falls back to minimum current (SOLAR_PWM_MAX) until data
 // comes back, instead of charging from the grid on a stale surplus.
 #define SOLAR_STALE_MS    180000
 // Solar pause/resume (anti-flicker): when already at minimum current and still
-// in deficit (or solar data stale), pause charging instead of drawing from the
+// in deficit (or setpoint stale), pause charging instead of drawing from the
 // grid. Minimum on/off times keep the contactor from cycling on unsteady sun.
 #define SOLAR_PAUSE_AFTER_MS   600000   // Deficit at min current this long -> pause
 #define SOLAR_MIN_ON_MS        900000   // Never pause sooner than this after charging (re)started
 #define SOLAR_MIN_PAUSE_MS    1200000   // Once paused, stay paused at least this long
-#define SOLAR_RESUME_W           2300   // Solar production needed to resume (~8A x 230V + margin)
-#define SOLAR_RESUME_AFTER_MS  600000   // Production >= SOLAR_RESUME_W this long -> resume
+#define SOLAR_RESUME_W           2300   // Setpoint needed to resume (~8A x 230V + margin)
+#define SOLAR_RESUME_AFTER_MS  600000   // Setpoint >= SOLAR_RESUME_W this long -> resume
 
 //-- Unified config NVS defaults --//
 #define NVS_DEFAULT_HOSTNAME      "zozo-charge"

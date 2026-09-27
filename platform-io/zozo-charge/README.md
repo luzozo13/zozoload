@@ -80,7 +80,7 @@ All topics below are prefixed with `MQTT_TOPIC` (see `include/mqtt_config.h`).
 - `state/details` - Periodic EVSE state: `state` (A, B, C, S = sleeping, F = fault), `CPP_max`/`CPP_min`, `charging_enabled`, `solar_tracking`, `solar_paused`
 - `state/change` - State transitions (`{"from":"B","to":"C"}`) and events (`{"event":"cp_fault_seen",...}`)
 - `state/pwm` - Current PWM and setpoint (retained)
-- `state/solar_tracking` - Solar control loop telemetry: `action` (`hold`, `down`, `up`, `stale`, `pause`, `paused`, `resume`), `deficit_s`, `paused_s`, `resume_s`
+- `state/solar_tracking` - Solar control loop telemetry: `setpoint_w`, `setpoint_age_s` (seconds since the last setpoint, `-1`: none since boot), `evse_w`, `diff_w`, `action` (`hold`, `down`, `up`, `stale`, `pause`, `paused`, `resume`), `deficit_s`, `paused_s`, `resume_s`
 - `state/pzem` - PZEM telemetry (V, I, W, kWh, Hz, PF)
 - `state/comm`, `state/time`, `state/debug` - Connection, time and debug status
 
@@ -92,17 +92,29 @@ All topics below are prefixed with `MQTT_TOPIC` (see `include/mqtt_config.h`).
 - `set/solar_tracking` - `on` | `off`
 - `set/debug`, `set/debug_flags`, `get/debug` - Debug output control
 
-Solar production and house consumption are read from the topics set in
-`MQTT_SOLAR_PRODUCTION_POWER` / `MQTT_HOUSE_CONSUMPTION_POWER`.
+**Solar mode input:** the charger follows the setpoint published by the
+energy planner (luzozo13/smarthome-infra, `energy-planner/`) on
+`MQTT_EVSE_SETPOINT` (default `energy_planner/evse/setpoint`, plain watts):
+the power available for the car = solar production − real loads (hot water
+meter) − a fixed offset − fictive loads added in the planner GUI. It no
+longer reads the solar meter itself. Add this line to your git-ignored
+`include/mqtt_config.h` (the default is used if it is missing):
+
+```c
+#define MQTT_EVSE_SETPOINT "energy_planner/evse/setpoint"
+```
+
+`MQTT_SOLAR_PRODUCTION_POWER` is no longer used. House consumption is still
+read from `MQTT_HOUSE_CONSUMPTION_POWER` (not used by the loop).
 
 ### 4. Charging Modes
 
 - **boost** - Charge at 16A as soon as the car is ready.
 - **cheap** - Charge at 16A only while `set/cheap` is `on`.
-- **solar** - Closed-loop tracking of solar production (see `SOLAR_*` in `include/params.h`):
+- **solar** - Closed-loop tracking of the energy planner's setpoint, i.e. solar production minus the other loads (see `SOLAR_*` in `include/params.h`):
   - the PWM ramps up slowly on surplus and backs off fast on deficit, between 8A and `SOLAR_PWM_MIN`;
-  - when the charger is already at minimum current and still in deficit (or solar data is stale) for `SOLAR_PAUSE_AFTER_MS`, charging is **paused** (J1772 stop sequence), but never less than `SOLAR_MIN_ON_MS` after charging started;
-  - a pause lasts at least `SOLAR_MIN_PAUSE_MS`, and charging **resumes** only after production has stayed above `SOLAR_RESUME_W` for `SOLAR_RESUME_AFTER_MS`. It restarts at minimum current and ramps up;
+  - when the charger is already at minimum current and still in deficit (or no setpoint for `SOLAR_STALE_MS`: planner or solar meter down) for `SOLAR_PAUSE_AFTER_MS`, charging is **paused** (J1772 stop sequence), but never less than `SOLAR_MIN_ON_MS` after charging started;
+  - a pause lasts at least `SOLAR_MIN_PAUSE_MS`, and charging **resumes** only after the setpoint has stayed above `SOLAR_RESUME_W` for `SOLAR_RESUME_AFTER_MS`. It restarts at minimum current and ramps up;
   - unplugging the car or selecting a mode clears the pause.
 
 ### 5. Safety Behaviour

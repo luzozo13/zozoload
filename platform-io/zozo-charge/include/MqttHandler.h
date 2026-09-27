@@ -14,7 +14,7 @@ private:
     //-- Existing debug state --//
     uint8_t m_debug_flags = 0;
     bool m_debug_enabled = false;
-    float m_solar_watts = 0.0f;
+    float m_setpoint_watts = 0.0f;
     float m_house_watts = 0.0f;
     int m_last_pwm = 0;
     float m_last_power_w = 0.0f;
@@ -79,9 +79,9 @@ public:
     bool isDebugEnabled() const { return m_debug_enabled; }
 
     //-- External data (pass-through to EVSEController) --//
-    float getSolarWatts() const { return m_solar_watts; }
+    float getSetpointWatts() const { return m_setpoint_watts; }
     float getHouseWatts() const { return m_house_watts; }
-    void setSolarWatts(float watts);
+    void setSetpointWatts(float watts);
     void setSolarTracking(bool enabled);
 
     //-- Unified config getters (used by main.cpp) --//
