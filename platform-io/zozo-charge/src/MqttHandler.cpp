@@ -299,10 +299,29 @@ void MqttHandler::publishDebugStatus() {
     }
     strcat(flags_arr, "]");
 
-    char sz_msg[320];
+    // Runtime settings too, so a tool can snapshot them and restore them afterwards
+    // (whole packet must stay under MQTT_MAX_PACKET_SIZE = 512)
+    static const char* const k_modes[] = { "boost", "solar", "cheap" };
+    const char* mode = "unknown";
+    int charge_speed = -1;
+    bool solar_tracking = false, charging_enabled = false, cheap = false;
+    if (m_evseController) {
+        int m = m_evseController->getEvseMode();
+        if (m >= 0 && m <= 2) mode = k_modes[m];
+        charge_speed     = m_evseController->getChargeSpeed();
+        solar_tracking   = m_evseController->isSolarTracking();
+        charging_enabled = m_evseController->isChargingEnabled();
+        cheap            = m_evseController->isChargeCheap();
+    }
+
+    char sz_msg[448];
     snprintf(sz_msg, sizeof(sz_msg),
-        "{\"debug\":\"%s\",\"flags\":%d,\"flag_details\":%s}",
-        m_debug_enabled ? "on" : "off", m_debug_flags, flags_arr);
+        "{\"debug\":\"%s\",\"flags\":%d,\"flag_details\":%s,"
+        "\"mode\":\"%s\",\"charge_speed\":%d,\"solar_tracking\":\"%s\",\"charging_enabled\":%s,"
+        "\"cheap\":%s,\"pzem_pub_rate\":%u,\"pzem_acq_rate\":%u}",
+        m_debug_enabled ? "on" : "off", m_debug_flags, flags_arr,
+        mode, charge_speed, solar_tracking ? "on" : "off", charging_enabled ? "true" : "false",
+        cheap ? "true" : "false", m_pzem_pub_rate, m_pzem_acq_rate);
     publish(MQTT_STATE_DEBUG, sz_msg, true);
 }
 

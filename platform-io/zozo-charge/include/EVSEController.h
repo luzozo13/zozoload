@@ -136,6 +136,7 @@ public:
 
   // Mode getters/setters
   void setChargeCheap(bool is_cheap) { m_is_charge_cheap = is_cheap; }
+  bool isChargeCheap() const { return m_is_charge_cheap; }
   void setEvseMode(EvseMode mode);
   EvseMode getEvseMode() const { return m_active_mode; };
 
