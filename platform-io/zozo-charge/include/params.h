@@ -71,17 +71,35 @@ class PZEM004Tv30; // PZEM type forward declaration
 #define NVS_SCHEMA_VERSION  5
 #define DBG_DEFAULT_FLAGS   0x1F  // All 5 flags on by default
 
+//-- Power model: car draw vs CP PWM --//
+// Measured, linear between POWER_MODEL_PWM_MIN and POWER_MODEL_PWM_MAX:
+//   W = POWER_MODEL_W_AT_PWM0 - POWER_MODEL_W_PER_PWM * pwm
+// Outside that range the car saturates (its own max current below, its 6A floor
+// above). tools/pwm_sweep.py fits these after a sweep and prints the lines to
+// paste here (also in the ESPHome port: evse_params.h). Used by set/power_w and
+// by the solar jump. Values: sweep of 2026-09-28 (fit over 110-215, worst error
+// 178 W); 105 set by hand, where the car stops taking more (7.27 kW, 31 A).
+#define POWER_MODEL_W_AT_PWM0  13723.7f  // W, intercept of the fit
+#define POWER_MODEL_W_PER_PWM  59.01f    // W less per PWM step
+#define POWER_MODEL_PWM_MIN    105       // Most current the car takes (lower PWM: no gain)
+#define POWER_MODEL_PWM_MAX    215       // Least current (car's 6A floor)
+
 //-- Solar Tracking Mode --//
 // Closed-loop control: every SOLAR_LOOP_MS, compare the energy planner's setpoint
 // (MQTT_EVSE_SETPOINT: solar production minus the other loads) vs EVSE
-// consumption (PZEM). Surplus -> decrement PWM (more current, slow ramp-up);
-// deficit -> increment PWM (less current, fast back-off). PWM clamped to
-// [SOLAR_PWM_MIN, SOLAR_PWM_MAX]. Deadband prevents flapping near zero diff.
-#define SOLAR_PWM_MIN     110   // Max charging current (lowest PWM duty)
-#define SOLAR_PWM_MAX     221   // Min charging current = 8A (CP_AMP_8)
-#define SOLAR_DEADBAND_W  500   // No change when |setpoint - evse_power| <= this
-#define SOLAR_STEP_DOWN   5     // PWM decrement step (more current) on surplus
-#define SOLAR_STEP_UP     10    // PWM increment step (less current) on deficit
+// consumption (PZEM). Outside the deadband, jump straight to the power model's
+// PWM for the setpoint (SOLAR_JUMP), or step when the model points the wrong way
+// (other car): surplus -> decrement PWM (more current), deficit -> increment PWM
+// (less current). PWM clamped to [SOLAR_PWM_MIN, SOLAR_PWM_MAX].
+#define SOLAR_JUMP        1     // 0: fixed steps only (no power model)
+#define SOLAR_PWM_MIN     POWER_MODEL_PWM_MIN  // Max charging current (lowest PWM duty)
+#define SOLAR_PWM_MAX     POWER_MODEL_PWM_MAX  // Min charging current
+// Deadband: above the power model's worst error (~210 W) and the setpoint's 10 s
+// jitter (p95 ~190 W, 2026-09 HA history), so the loop holds on noise. Each step
+// stays below the deadband (x ~59 W/PWM): a step can never overshoot past it.
+#define SOLAR_DEADBAND_W  250   // No change when |setpoint - evse_power| <= this
+#define SOLAR_STEP_DOWN   3     // PWM decrement step (more current, ~175 W) on surplus
+#define SOLAR_STEP_UP     5     // PWM increment step (less current, ~290 W) on deficit
 #define SOLAR_LOOP_MS     10000 // Control loop period (ms)
 // Setpoint freshness: the energy planner publishes at least every 30 s, and stops
 // when the solar meter is silent. With no setpoint message for this long, the loop stops trusting

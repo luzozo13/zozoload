@@ -126,6 +126,8 @@ public:
   void setCppMax(int max_val) { i_cpp_max = max_val; }
   void setCppMin(int min_val) { i_cpp_min = min_val; }
   void setChargeSpeed(int speed);
+  // PWM for a car draw in W (power model in params.h), clamped to the model's range
+  static int pwmForWatts(float watts);
 
   // Charging authorization
   void setChargingEnabled(bool enabled);

@@ -10,6 +10,11 @@
 #ifndef MQTT_EVSE_SETPOINT
 #define MQTT_EVSE_SETPOINT "energy_planner/evse/setpoint"
 #endif
+// ...and set/power_w
+#ifndef MQTT_SET_POWER_W
+#define MQTT_SET_POWER_W        MQTT_TOPIC "/set/power_w"
+#define MQTT_SET_POWER_W_STATUS MQTT_TOPIC "/set/power_w/status"
+#endif
 #include <Arduino.h>
 #include <WiFi.h>
 #include <stdio.h>
@@ -100,6 +105,7 @@ bool MqttHandler::reconnect() {
     if (m_pubsubClient->connect(m_hostname)) {
         // Existing EV-charger topics
         subscribe(MQTT_SET_CHARGE_RATE);
+        subscribe(MQTT_SET_POWER_W);
         subscribe(MQTT_SET_DELAY);
         subscribe(MQTT_SET_DEBUG);
         subscribe(MQTT_SET_DEBUG_FLAGS);
@@ -463,6 +469,19 @@ void MqttHandler::handleMessage(char* topic, uint8_t* raw, unsigned int length) 
         snprintf(sz_conf, sizeof(sz_conf),
             "{\"cmd\":\"charge_rate\",\"result\":\"ok\",\"value\":%d,\"ts\":\"%s\"}", i_pwm, ts);
         publish(MQTT_SET_CHARGE_RATE_STATUS, sz_conf);
+    }
+
+    // Charge at a given power: PWM from the power model (params.h), clamped to its
+    // range. Same as set/charge_rate: in solar mode the loop takes over again.
+    if (strcmp(topic, MQTT_SET_POWER_W) == 0) {
+        float f_watts = atof((char*)payload);
+        int i_pwm = EVSEController::pwmForWatts(f_watts);
+        if (m_evseController) m_evseController->setChargeSpeed(i_pwm);
+        publishPwm();
+        snprintf(sz_conf, sizeof(sz_conf),
+            "{\"cmd\":\"power_w\",\"result\":\"ok\",\"value\":%.0f,\"pwm\":%d,\"ts\":\"%s\"}",
+            f_watts, i_pwm, ts);
+        publish(MQTT_SET_POWER_W_STATUS, sz_conf);
     }
 
     if (strcmp(topic, MQTT_SET_DELAY) == 0) {

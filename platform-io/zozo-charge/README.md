@@ -80,7 +80,7 @@ All topics below are prefixed with `MQTT_TOPIC` (see `include/mqtt_config.h`).
 - `state/details` - Periodic EVSE state: `state` (A, B, C, S = sleeping, F = fault), `CPP_max`/`CPP_min`, `charging_enabled`, `solar_tracking`, `solar_paused`
 - `state/change` - State transitions (`{"from":"B","to":"C"}`) and events (`{"event":"cp_fault_seen",...}`)
 - `state/pwm` - Current PWM and setpoint (retained)
-- `state/solar_tracking` - Solar control loop telemetry: `setpoint_w`, `setpoint_age_s` (seconds since the last setpoint, `-1`: none since boot), `evse_w`, `diff_w`, `action` (`hold`, `down`, `up`, `stale`, `pause`, `paused`, `resume`), `deficit_s`, `paused_s`, `resume_s`
+- `state/solar_tracking` - Solar control loop telemetry: `setpoint_w`, `setpoint_age_s` (seconds since the last setpoint, `-1`: none since boot), `evse_w`, `diff_w`, `action` (`hold`, `jump_down`, `jump_up`, `down`, `up`, `stale`, `pause`, `paused`, `resume`), `deficit_s`, `paused_s`, `resume_s`
 - `state/pzem` - PZEM telemetry (V, I, W, kWh, Hz, PF)
 - `state/comm`, `state/time`, `state/debug` - Connection, time and debug status
 
@@ -88,6 +88,7 @@ All topics below are prefixed with `MQTT_TOPIC` (see `include/mqtt_config.h`).
 - `set/mode` - `boost` | `solar` | `cheap`
 - `set/cheap` - `on` | `off` (cheap-tariff window, used by `cheap` mode)
 - `set/charge_rate` - Charging PWM (0-255, lower = more current)
+- `set/power_w` - Charging power in W: the power model's PWM for it (see below), acked on `set/power_w/status` with the PWM used. Like `set/charge_rate`, meant for `boost` mode (the solar loop overrides it)
 - `set/delay` - `on` (hold charging) | `off`
 - `set/solar_tracking` - `on` | `off`
 - `set/debug`, `set/debug_flags`, `get/debug` - Debug output control
@@ -107,12 +108,21 @@ longer reads the solar meter itself. Add this line to your git-ignored
 `MQTT_SOLAR_PRODUCTION_POWER` is no longer used. House consumption is still
 read from `MQTT_HOUSE_CONSUMPTION_POWER` (not used by the loop).
 
+**Power model:** the car's draw is linear in the pilot PWM between
+`POWER_MODEL_PWM_MIN` and `POWER_MODEL_PWM_MAX` (`include/params.h`):
+`W = POWER_MODEL_W_AT_PWM0 - POWER_MODEL_W_PER_PWM * pwm`. Outside, the car
+saturates (its own max current, its 6A floor). `set/power_w` and the solar
+loop use it. The constants are per car: `tools/pwm_sweep.py` fits them at the
+end of a sweep and prints the lines to paste (also into the ESPHome port's
+`evse_params.h`); `tools/pwm_sweep.py --fit RUN_DIR` redoes the fit of an
+earlier run.
+
 ### 4. Charging Modes
 
 - **boost** - Charge at 16A as soon as the car is ready.
 - **cheap** - Charge at 16A only while `set/cheap` is `on`.
 - **solar** - Closed-loop tracking of the energy planner's setpoint, i.e. solar production minus the other loads (see `SOLAR_*` in `include/params.h`):
-  - the PWM ramps up slowly on surplus and backs off fast on deficit, between 8A and `SOLAR_PWM_MIN`;
+  - outside `SOLAR_DEADBAND_W`, the PWM jumps to the power model's value for the setpoint (`jump_down` / `jump_up`), or steps by `SOLAR_STEP_DOWN` / `SOLAR_STEP_UP` when the model points the wrong way (other car). `SOLAR_JUMP 0` keeps the steps only. Range: `SOLAR_PWM_MAX` (least current) to `SOLAR_PWM_MIN` (most), the power model's range. Before charging starts, the PWM is already the model's value for the setpoint;
   - when the charger is already at minimum current and still in deficit (or no setpoint for `SOLAR_STALE_MS`: planner or solar meter down) for `SOLAR_PAUSE_AFTER_MS`, charging is **paused** (J1772 stop sequence), but never less than `SOLAR_MIN_ON_MS` after charging started;
   - a pause lasts at least `SOLAR_MIN_PAUSE_MS`, and charging **resumes** only after the setpoint has stayed above `SOLAR_RESUME_W` for `SOLAR_RESUME_AFTER_MS`. It restarts at minimum current and ramps up;
   - unplugging the car or selecting a mode clears the pause.

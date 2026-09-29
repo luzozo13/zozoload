@@ -7,9 +7,16 @@ power at each step.
 Uses the mosquitto_sub / mosquitto_pub clients (no Python dependencies).
 Settings reported on state/debug are saved first and restored (and checked)
 at the end, on abort or on Ctrl-C. Needs the firmware with the extended state/debug.
+
+After the sweep, fits the power model W = w0 - k * pwm over the levels where the
+car follows the PWM (fit.json, end of summary.md) and prints the POWER_MODEL_*
+lines for params.h and the ESPHome evse_params.h. --fit RUN_DIR redoes the fit
+from an earlier run's summary.csv.
 """
 import argparse
+import csv
 import json
+import math
 import os
 import signal
 import statistics
@@ -189,6 +196,106 @@ def summarize(levels, pzem, settle_s):
     return rows
 
 
+def fit_power_model(rows, sat_frac=0.3):
+    """Least-squares W = w0 - k * pwm over the levels where the car follows the PWM.
+
+    The car saturates at both ends (its own max current, its 6A floor): the median W
+    barely moves between neighbour levels there. Levels at an end whose step to the
+    next level is below sat_frac of the median step are dropped. Returns None when
+    fewer than 3 levels are left."""
+    pts = sorted((r["pwm"], r["W_median"]) for r in rows
+                 if not r.get("recheck") and r.get("W_median") is not None)
+    if len(pts) < 3:
+        return None
+    steps = [pts[i][1] - pts[i + 1][1] for i in range(len(pts) - 1)]
+    med = statistics.median(steps)
+    lo, hi = 0, len(pts) - 1
+    while lo < hi and steps[lo] < sat_frac * med:
+        lo += 1
+    while hi > lo and steps[hi - 1] < sat_frac * med:
+        hi -= 1
+    used = pts[lo:hi + 1]
+    if len(used) < 3:
+        return None
+    n = len(used)
+    mx = sum(p for p, _ in used) / n
+    my = sum(w for _, w in used) / n
+    slope = sum((p - mx) * (w - my) for p, w in used) / sum((p - mx) ** 2 for p, _ in used)
+    w0 = my - slope * mx
+    res = [w - (w0 + slope * p) for p, w in used]
+    max_res = max(abs(r) for r in res)
+    return {
+        "w_at_pwm0": round(w0, 1), "w_per_pwm": round(-slope, 2),
+        "pwm_min": used[0][0], "pwm_max": used[-1][0],
+        "w_at_min": used[0][1], "w_at_max": used[-1][1],
+        "rms_w": round((sum(r * r for r in res) / n) ** .5, 1), "max_res_w": round(max_res, 1),
+        # The solar loop must hold within the model's error: deadband above it
+        "deadband_w": 50 * math.ceil(max_res * 1.1 / 50),
+        # The sweep ends before the car saturates at that side: the range may be wider
+        "open_min": lo == 0, "open_max": hi == len(pts) - 1,
+        "dropped": [p for p, _ in pts[:lo] + pts[hi + 1:]],
+    }
+
+
+def format_fit(fit):
+    if fit is None:
+        return "Power model: not enough unsaturated levels to fit.\n"
+    f = fit
+    lines = [
+        f"Power model: W = {f['w_at_pwm0']} - {f['w_per_pwm']} * pwm over PWM {f['pwm_min']}-{f['pwm_max']} "
+        f"({f['w_at_min']:.0f}-{f['w_at_max']:.0f} W), rms {f['rms_w']} W, worst {f['max_res_w']} W"
+        + (f", saturated levels dropped: {f['dropped']}" if f["dropped"] else ""),
+    ]
+    if f["open_min"]:
+        lines.append(f"  No saturation seen at PWM {f['pwm_min']}: the car may take more current, "
+                     f"sweep from a lower --start to find its max.")
+    if f["open_max"]:
+        lines.append(f"  No saturation seen at PWM {f['pwm_max']}: sweep to a higher --end to find the car's floor.")
+    lines.append(f"  SOLAR_DEADBAND_W should stay >= {f['deadband_w']} W (worst model error + 10%), "
+                 f"and each SOLAR_STEP x {f['w_per_pwm']} W below it.")
+    lines += [
+        "",
+        "PlatformIO include/params.h:",
+        "```",
+        f"#define POWER_MODEL_W_AT_PWM0  {f['w_at_pwm0']}f",
+        f"#define POWER_MODEL_W_PER_PWM  {f['w_per_pwm']}f",
+        f"#define POWER_MODEL_PWM_MIN    {f['pwm_min']}",
+        f"#define POWER_MODEL_PWM_MAX    {f['pwm_max']}",
+        "```",
+        "ESPHome esphome/components/zozo_evse/evse_params.h (smarthome-infra):",
+        "```",
+        f"static const float POWER_MODEL_W_AT_PWM0 = {f['w_at_pwm0']}f;",
+        f"static const float POWER_MODEL_W_PER_PWM = {f['w_per_pwm']}f;",
+        f"static const int POWER_MODEL_PWM_MIN = {f['pwm_min']};",
+        f"static const int POWER_MODEL_PWM_MAX = {f['pwm_max']};",
+        "```",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def write_fit(outdir, rows):
+    """Fit the power model, save fit.json, append it to summary.md, return the text."""
+    fit = fit_power_model(rows)
+    with open(os.path.join(outdir, "fit.json"), "w") as f:
+        json.dump(fit, f, indent=1)
+    text = format_fit(fit)
+    path = os.path.join(outdir, "summary.md")
+    md = open(path).read() if os.path.exists(path) else ""
+    md = md.split("\nPower model:")[0].rstrip("\n") + "\n"   # replace an earlier fit
+    with open(path, "w") as f:
+        f.write(md + "\n" + text)
+    return text
+
+
+def read_summary_csv(outdir):
+    rows = []
+    with open(os.path.join(outdir, "summary.csv")) as f:
+        for r in csv.DictReader(f):
+            rows.append({"pwm": int(r["pwm"]), "recheck": r["recheck"] == "True",
+                         "W_median": float(r["W_median"]) if r["W_median"] not in ("", "None") else None})
+    return rows
+
+
 def write_summary(outdir, rows):
     cols = ["pwm", "recheck", "start", "acked", "n", "W_median", "W_p10", "W_p90", "W_min", "W_max",
             "I_median", "V_median", "PF_median", "flag"]
@@ -228,7 +335,13 @@ def main():
     ap.add_argument("--wait-timeout", type=float, default=12 * 3600, help="max wait for state C, seconds")
     ap.add_argument("--out", default=".", help="directory in which the run folder is created")
     ap.add_argument("--dry-run", action="store_true", help="print the plan and exit")
+    ap.add_argument("--fit", metavar="RUN_DIR",
+                    help="only (re)fit the power model from RUN_DIR/summary.csv of an earlier sweep, and exit")
     a = ap.parse_args()
+
+    if a.fit:
+        print(write_fit(a.fit, read_summary_csv(a.fit)), end="")
+        return
 
     if a.start == a.end or a.step <= 0 or a.pzem_rate < 5:
         ap.error("need start != end, step > 0, pzem-rate >= 5")
@@ -338,7 +451,9 @@ def main():
             for ts, d in pzem:
                 cur = [lv["pwm"] for lv in levels if lv["sent"] <= ts]
                 f.write(f"{now_str(ts)},{cur[-1] if cur else ''},{d.get('V')},{d.get('I')},{d.get('W')},{d.get('PF')}\n")
-        print(write_summary(outdir, summarize(levels, pzem, a.settle)))
+        rows = summarize(levels, pzem, a.settle)
+        print(write_summary(outdir, rows))
+        print(write_fit(outdir, rows))
     print(f"Files in {outdir}")
 
 
