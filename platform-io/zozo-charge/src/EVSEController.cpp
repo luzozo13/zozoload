@@ -65,6 +65,13 @@ void EVSEController::setChargeSpeed(int speed) {
   }
 }
 
+int EVSEController::pwmForWatts(float watts) {
+  int pwm = lroundf((POWER_MODEL_W_AT_PWM0 - watts) / POWER_MODEL_W_PER_PWM);
+  if (pwm < POWER_MODEL_PWM_MIN) pwm = POWER_MODEL_PWM_MIN;
+  if (pwm > POWER_MODEL_PWM_MAX) pwm = POWER_MODEL_PWM_MAX;
+  return pwm;
+}
+
 void EVSEController::setEvseMode(EvseMode mode) {
   m_active_mode = mode;
   setSolarPaused(false);   // Any mode (re)selection cancels a solar pause
@@ -375,11 +382,14 @@ void EVSEController::applySolarTracking() {
   bool charging_effective = (state == STATE_C) && isChargeAllowed();
 
   // Do not adapt solar tracking setpoint unless charging is effectively active.
-  // Before charging starts, keep a deterministic pre-charge setpoint: 16A, or
-  // min current right after a solar resume.
+  // Before charging starts, keep a deterministic pre-charge setpoint: min current
+  // right after a solar resume, else the power model's PWM for the setpoint
+  // (SOLAR_JUMP), else 16A.
   if (!charging_effective) {
     b_solar_was_charging = false;
-    int pre_charge = b_solar_soft_start ? SOLAR_PWM_MAX : CP_AMP_16;
+    int pre_charge = CP_AMP_16;
+    if (b_solar_soft_start) pre_charge = SOLAR_PWM_MAX;
+    else if (SOLAR_JUMP && setpoint_fresh) pre_charge = pwmForWatts(f_setpoint_watts);
     if (i_charge_speed != pre_charge) {
       setChargeSpeed(pre_charge);
       if (m_mqttHandler) m_mqttHandler->publishPwm();
@@ -407,12 +417,19 @@ void EVSEController::applySolarTracking() {
   if (!setpoint_fresh) {
     pwm_next = SOLAR_PWM_MAX;
     action = "stale";
-  } else if (diff > SOLAR_DEADBAND_W) {
-    pwm_next -= SOLAR_STEP_DOWN;   // surplus: ramp up current (lower PWM)
-    action = "down";
-  } else if (diff < -SOLAR_DEADBAND_W) {
-    pwm_next += SOLAR_STEP_UP;     // deficit: back off current (higher PWM)
-    action = "up";
+  } else if (diff > SOLAR_DEADBAND_W || diff < -SOLAR_DEADBAND_W) {
+    // Jump to the power model's PWM for the setpoint. When the model does not
+    // move the right way (other car, model off), fall back to a fixed step.
+    int pwm_model = pwmForWatts(f_setpoint_watts);
+    if (diff > 0) {                // surplus: more current (lower PWM)
+      bool jump = SOLAR_JUMP && pwm_model < pwm_current;
+      pwm_next = jump ? pwm_model : pwm_current - SOLAR_STEP_DOWN;
+      action = jump ? "jump_down" : "down";
+    } else {                       // deficit: less current (higher PWM)
+      bool jump = SOLAR_JUMP && pwm_model > pwm_current;
+      pwm_next = jump ? pwm_model : pwm_current + SOLAR_STEP_UP;
+      action = jump ? "jump_up" : "up";
+    }
   }
 
   if (pwm_next < SOLAR_PWM_MIN) pwm_next = SOLAR_PWM_MIN;
